@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IIT KGP - Student Internship Portal</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body oncontextmenu="return false;">
+    <div id="auth-view" class="login-wrapper">
+        <div class="login-box">
+            <h2>Internship Registration</h2>
+            <p>Login with your official email to access assessments.</p>
+            <button id="login-btn" class="btn btn-primary" style="margin-top:20px;">
+                Sign in with Google
+            </button>
+        </div>
+    </div>
+
+    <div id="dashboard-view" class="container hidden">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+            <h2>Available Assessments</h2>
+            <button id="logout-btn" class="btn btn-danger">Logout</button>
+        </div>
+        <div id="exam-list" class="grid"></div>
+        
+        <h3 style="margin-top:40px; border-top:1px solid #ddd; padding-top:20px;">Your Analysis</h3>
+        <div id="history-list" class="grid"></div>
+    </div>
+
+    <div id="exam-view" class="hidden">
+        <div id="malpractice-alert" class="warning-banner hidden">
+            WARNING: Tab Switch Detected! (<span id="warn-count">0</span>/3)
+        </div>
+
+        <div class="exam-header">
+            <span id="exam-name">Physics Test</span>
+            <div style="display:flex; align-items:center; gap:16px;">
+                <div class="timer-box" id="timer">00:00:00</div>
+                <button id="submit-btn" class="btn btn-danger">Submit Exam</button>
+            </div>
+        </div>
+
+        <div class="exam-layout">
+            <div class="question-area" id="q-area">
+                <!-- Questions rendered here -->
+            </div>
+
+            <div class="sidebar">
+                <h4>Question Palette</h4>
+
+                <div class="palette-summary">
+                    <div style="display:flex; flex-direction:column; gap:8px; width:100%;">
+                        <div class="palette-legend" id="palette-legend">
+                            <div class="legend-item"><span class="legend-dot unanswered"></span> Unanswered</div>
+                            <div class="legend-item"><span class="legend-dot seen"></span> Seen</div>
+                            <div class="legend-item"><span class="legend-dot answered"></span> Answered</div>
+                            <div class="legend-item"><span class="legend-dot marked"></span> Marked</div>
+                            <div class="legend-item"><span class="legend-dot flagged"></span> Flagged</div>
+                        </div>
+
+                        <div class="palette-progress" aria-hidden="true">
+                            <div class="fill" id="palette-fill" style="width:0%"></div>
+                        </div>
+                        <div style="display:flex; justify-content:space-between; font-size:0.9rem; color:var(--muted);">
+                            <span id="palette-count">0 / 0</span>
+                            <span id="palette-percent">0%</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="q-palette" id="palette" aria-label="Question palette" role="list">
+                    <!-- q-nodes injected here -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="result-view" class="container hidden">
+        <h2>Performance Analysis</h2>
+        <div class="stat-box">
+            <div class="stat">
+                <h3>Score</h3>
+                <h2 id="res-score">0</h2>
+            </div>
+            <div class="stat">
+                <h3>Rank</h3>
+                <h2 id="res-rank">Calculating...</h2>
+            </div>
+            <div class="stat">
+                <h3>Accuracy</h3>
+                <h2 id="res-acc">0%</h2>
+            </div>
+        </div>
+        <button onclick="location.reload()" class="btn btn-primary">Back to Home</button>
+        
+        <div id="detailed-solutions" style="margin-top:20px;"></div>
+    </div>
+
+    <script type="module" src="student.js"></script>
+</body>
+</html>
