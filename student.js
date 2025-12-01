@@ -1,452 +1,794 @@
 import { auth, db, provider } from './config.js';
-import { signInWithPopup, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
-import { collection, getDocs, doc, getDoc, addDoc, query, where, setDoc, updateDoc, orderBy } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+import { collection, getDocs, doc, getDoc, addDoc, query, where, updateDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
-// STATE
+// --- STATE ---
 let currentUser = null;
 let currentExam = null;
-let userAnswers = {};
-let liveStatusDocId = null;
+let userAnswers = {};      
+let questionStatus = {};   
+let timeLog = {};          
+let currentQIdx = 0;
+let lastTimeRef = 0;
 let timerInterval;
-let seenQuestions = new Set();
-let currentIndex = 0;
+let liveDocId = null;
 
-// AUTH
+// Analysis State
+let currentAnalysisData = null;
+let currentTestSchema = null;
+let currentSolIdx = 0;
+
+// Store mapping from flat index to original question/sub-question
+let flatQuestions = [];
+let flatToOriginal = [];
+
+let analysisFlatQuestions = [];
+let analysisFlatToOriginal = [];
+
+// --- DOM ELEMENTS & VIEWS ---
+const views = {
+    auth: document.getElementById('auth-view'),
+    dash: document.getElementById('dashboard-view'),
+    exam: document.getElementById('exam-view'),
+    anOverview: document.getElementById('analysis-overview'),
+    anDetail: document.getElementById('analysis-detail')
+};
+
+function switchView(viewName) {
+    Object.values(views).forEach(v => v.classList.add('hidden'));
+    views[viewName].classList.remove('hidden');
+}
+
+// --- AUTH ---
 onAuthStateChanged(auth, (user) => {
     if (user) {
         currentUser = user;
-        document.getElementById('auth-view').classList.add('hidden');
-        document.getElementById('dashboard-view').classList.remove('hidden');
+        switchView('dash');
+        document.getElementById('user-name-display').innerText = user.displayName;
         loadDashboard();
+    } else {
+        switchView('auth');
     }
 });
 
 document.getElementById('login-btn').onclick = () => signInWithPopup(auth, provider);
+document.getElementById('logout-btn').onclick = () => signOut(auth).then(() => location.reload());
 
-// DASHBOARD
+// --- DASHBOARD ---
 async function loadDashboard() {
     const list = document.getElementById('exam-list');
+    const hist = document.getElementById('history-list');
     list.innerHTML = 'Loading...';
-    const now = new Date();
 
-    const snap = await getDocs(collection(db, "tests"));
-    list.innerHTML = '';
+    try {
+        // 1. Fetch Data
+        const testsSnap = await getDocs(collection(db, "tests"));
+        const resultsSnap = await getDocs(query(collection(db, "results"), where("uid", "==", currentUser.uid)));
+        
+        // 2. Group Results by Test ID
+        const attemptsMap = {}; // { testId: [result1, result2] }
+        resultsSnap.forEach(doc => {
+            const data = doc.data();
+            data.id = doc.id; // Store Doc ID for analysis link
+            if (!attemptsMap[data.testId]) attemptsMap[data.testId] = [];
+            attemptsMap[data.testId].push(data);
+        });
 
-    snap.forEach(d => {
-        const data = d.data();
-        const start = new Date(data.startTime);
-        const end = new Date(data.endTime);
+        // 3. Render Exam List
+        list.innerHTML = '';
+        testsSnap.forEach(d => {
+            const t = d.data();
+            const myAttempts = attemptsMap[d.id] || [];
+            const attemptCount = myAttempts.length;
+            const maxAttempts = t.attemptsAllowed || 1;
+            
+            // Sort attempts by date (newest first) to get latest result for analysis
+            myAttempts.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+            const latestResult = myAttempts[0];
 
-        let btnHtml = '';
-        let statusMsg = '';
+            let footerHTML = '';
+            let statusBadge = '';
 
-        if (now < start) {
-            statusMsg = `<span style="color:orange">Starts: ${start.toLocaleString()}</span>`;
-            btnHtml = `<button class="btn" disabled style="background:#ccc">Upcoming</button>`;
-        } else if (now > end) {
-            statusMsg = `<span style="color:red">Ended: ${end.toLocaleString()}</span>`;
-            btnHtml = `<button class="btn" disabled style="background:#ccc">Expired</button>`;
-        } else {
-            statusMsg = `<span style="color:green">Live Now! Ends: ${end.toLocaleString()}</span>`;
-            btnHtml = `<button class="btn btn-primary" onclick="window.checkAndStart('${d.id}')">Start Exam</button>`;
-        }
+            if (attemptCount === 0) {
+                // Not Attempted
+                statusBadge = `<span style="color:var(--gray); font-size:0.8rem">● New</span>`;
+                footerHTML = `<button class="btn btn-primary" style="width:100%" onclick="window.initExam('${d.id}')">Start Exam</button>`;
+            } else {
+                // Attempted at least once
+                const isLimitReached = attemptCount >= maxAttempts;
+                
+                // Button 1: Analysis (Always available if attempted)
+                const analysisBtn = `<button class="btn btn-success" style="flex:1" onclick="window.loadAnalysis('${latestResult.id}')">Analysis</button>`;
+                
+                // Button 2: Retake (If limit not reached)
+                let retakeBtn = '';
+                if (!isLimitReached) {
+                    retakeBtn = `<button class="btn btn-outline" style="flex:1" onclick="window.initExam('${d.id}')">Retake</button>`;
+                } else {
+                    retakeBtn = `<button class="btn btn-outline" style="flex:1" disabled title="Max attempts reached">Limit Reached</button>`;
+                }
 
-        const analysisBtn = `<button class="btn" onclick="window.viewAnalysis('${d.id}')">View Analysis</button>`;
+                statusBadge = `<span style="color:var(--success); font-weight:bold; font-size:0.8rem">● Attempt ${attemptCount}/${maxAttempts}</span>`;
+                footerHTML = `<div style="display:flex; gap:10px; width:100%">${analysisBtn}${retakeBtn}</div>`;
+            }
 
-        const card = document.createElement('div');
-        card.className = 'card';
-        card.innerHTML = `
-            <h3>${data.title}</h3>
-            <p>${statusMsg}</p>
-            <p>Duration: ${data.duration} mins | Attempts: ${data.attemptsAllowed === 999 ? 'Unlimited' : data.attemptsAllowed}</p>
-            <div style="display:flex; gap:8px; margin-top:8px;">
-                ${btnHtml}
-                ${analysisBtn}
-            </div>
-        `;
-        list.appendChild(card);
-    });
+            // Assuming 'exam' is your exam object from Firestore
+            const expiryText = t.expiryDate ? `<div class="expiry-date">Expiry: ${new Date(t.expiryDate).toLocaleString()}</div>` : '';
+
+            list.innerHTML += `
+                <div class="dash-card">
+                    <div style="display:flex; justify-content:space-between">
+                        <h3>${t.title}</h3>
+                        ${statusBadge}
+                    </div>
+                    <div class="dash-info">
+                        <span><i class="fa fa-clock"></i> ${t.duration} m</span>
+                        <span><i class="fa fa-list"></i> ${t.questions.length} Qs</span>
+                    </div>
+                    ${footerHTML}
+                    ${expiryText}
+                </div>`;
+        });
+
+        // 4. Render History (Flat list of all attempts)
+        hist.innerHTML = '';
+        // Sort all results by timestamp descending
+        const allResults = [];
+        resultsSnap.forEach(d => {
+             const data = d.data();
+             data.id = d.id;
+             allResults.push(data);
+        });
+        allResults.sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp));
+
+        allResults.forEach(r => {
+            hist.innerHTML += `
+                <div class="dash-card" style="border-left:4px solid var(--primary); cursor:pointer" onclick="window.loadAnalysis('${r.id}')">
+                    <h4>${r.examTitle}</h4>
+                    <div style="display:flex; justify-content:space-between; margin-top:10px">
+                        <span>Score: <b>${r.score}</b></span>
+                        <small>${new Date(r.timestamp).toLocaleDateString()}</small>
+                    </div>
+                </div>`;
+        });
+
+    } catch (e) { console.error(e); }
 }
 
-// CHECK ELIGIBILITY & START
-window.checkAndStart = async (testId) => {
-    // 1. Check Previous Attempts
-    const q = query(collection(db, "results"), where("uid", "==", currentUser.uid), where("testId", "==", testId));
-    const snap = await getDocs(q);
-    const docSnap = await getDoc(doc(db, "tests", testId));
-    const examData = docSnap.data();
-
-    if (snap.size >= examData.attemptsAllowed) {
-        alert("You have reached the maximum number of attempts for this exam.");
-        return;
-    }
-
-    // 2. Register Live Status (Online)
+// --- EXAM ENGINE ---
+window.initExam = async (tid) => {
     try {
-        const statusRef = await addDoc(collection(db, "live_status"), {
-            uid: currentUser.uid,
-            name: currentUser.displayName,
-            email: currentUser.email,
-            testId: testId,
-            status: "Taking Exam",
-            lastActive: new Date().toISOString()
-        });
-        liveStatusDocId = statusRef.id;
-    } catch(e) { console.error("Status Error", e); }
+        // 1. Fetch Exam
+        const docSnap = await getDoc(doc(db, "tests", tid));
+        if(!docSnap.exists()) { alert("Exam not found"); return; }
+        
+        currentExam = docSnap.data();
+        currentExam.id = tid;
 
-    // 3. Launch
-    startExamEngine(testId, examData);
+        // 2. SECURITY CHECK: Check attempts again before starting
+        const resSnap = await getDocs(query(collection(db, "results"), where("uid", "==", currentUser.uid), where("testId", "==", tid)));
+        const max = currentExam.attemptsAllowed || 1;
+        if(resSnap.size >= max) {
+            alert(`You have already used all ${max} attempts for this exam.`);
+            location.reload();
+            return;
+        }
+
+        // 3. Flatten questions for navigation
+        flattenQuestions(currentExam.questions);
+
+        // 4. Init State
+        userAnswers = {};
+        questionStatus = {};
+        timeLog = {};
+        for (let i = 0; i < flatQuestions.length; i++) {
+            questionStatus[i] = 'not-visited';
+            timeLog[i] = 0;
+        }
+
+        // 5. Set Live Status
+        try {
+            const liveRef = await addDoc(collection(db, "live_status"), {
+                uid: currentUser.uid, name: currentUser.displayName, testId: tid, status: "Active", lastActive: new Date().toISOString()
+            });
+            liveDocId = liveRef.id;
+        } catch(e) {}
+
+        // 6. Start UI
+        switchView('exam');
+        document.body.classList.add('exam-mode');
+        try { await document.documentElement.requestFullscreen(); } catch(e){}
+
+        renderPalette();
+        lastTimeRef = Date.now();
+        loadQuestion(0);
+        startTimer(currentExam.duration * 60);
+
+    } catch (err) { alert("Error: " + err.message); }
 };
 
-// EXAM ENGINE
-async function startExamEngine(id, data) {
-    currentExam = data;
-    currentExam.id = id;
-    userAnswers = {};
-    seenQuestions = new Set();
-    currentIndex = 0;
+// --- Question Loading ---
+window.loadQuestion = (idx) => {
+    const now = Date.now();
+    timeLog[currentQIdx] += (now - lastTimeRef) / 1000;
+    lastTimeRef = now;
 
-    try { await document.documentElement.requestFullscreen(); } catch(e){}
+    if (questionStatus[currentQIdx] === 'not-visited') questionStatus[currentQIdx] = 'not-answered';
+    updatePaletteNode(currentQIdx);
 
-    document.getElementById('exam-name').innerText = data.title || 'Exam';
+    currentQIdx = idx;
+    const q = flatQuestions[idx];
+    const area = document.getElementById('q-area');
 
-    document.getElementById('dashboard-view').classList.add('hidden');
-    document.getElementById('exam-view').classList.remove('hidden');
+    // Initialize tempAnswer with saved answer for this question
+    tempAnswer = userAnswers[idx] !== undefined ? JSON.parse(JSON.stringify(userAnswers[idx])) : null;
 
-    renderPalette();
-    loadQuestion(0);
-    startTimer(data.duration * 60);
+    let imgHTML = q.img ? `<img src="${q.img}" class="q-img" onerror="this.style.display='none'">` : '';
+    let marks = `(+${q.pos || q.marks || 4}, -${q.neg || q.negativeMarks || 1})`;
 
-    // Heartbeat (Update "Last Active" every 1 min)
-    setInterval(() => {
-        if(liveStatusDocId) {
-            updateDoc(doc(db, "live_status", liveStatusDocId), { lastActive: new Date().toISOString() });
+    let questionText = q.question || q.text || '';
+    let inputHTML = '';
+
+    // Show passage above sub-question if present
+    if (q.passage) {
+        inputHTML += `<div class="passage">${q.passage}</div>`;
+    }
+
+    // Prepare local (unsaved) answer state
+    let localAns = tempAnswer;
+
+    if (q.type === 'single') {
+        inputHTML += `<div class="options-grid">`;
+        q.options.forEach((opt, i) => {
+            let sel = localAns == i ? 'selected' : '';
+            let chk = localAns == i ? 'checked' : '';
+            inputHTML += `
+                <label class="option-box ${sel}" id="opt-${i}" onclick="setTempOption(${i})">
+                    <input type="radio" name="ans" ${chk}> 
+                    <div>${opt}</div>
+                </label>`;
+        });
+        inputHTML += `</div>`;
+    } else if (q.type === 'multi') {
+        inputHTML += `<div class="options-grid">`;
+        let arr = Array.isArray(localAns) ? localAns : [];
+        q.options.forEach((opt, i) => {
+            let sel = arr.includes(i) ? 'selected' : '';
+            let chk = arr.includes(i) ? 'checked' : '';
+            inputHTML += `
+                <label class="option-box ${sel}" id="opt-${i}" onclick="setTempMultiOption(${i})">
+                    <input type="checkbox" name="ans" ${chk}> 
+                    <div>${opt}</div>
+                </label>`;
+        });
+        inputHTML += `</div>`;
+    } else if (q.type === 'integer' || q.type === 'numerical') {
+        inputHTML += `<input type="number" class="form-control" style="width:100%; padding:15px; font-size:1.2rem; border:2px solid #ccc; border-radius:6px;" placeholder="Answer" value="${localAns||''}" oninput="setTempInt(this.value)">`;
+    } else if (q.type === 'matrix') {
+        let legend = '';
+        if (q.rows && q.columns) {
+            legend = `<div class="matrix-legend"><b>Rows:</b> ${q.rows.join(', ')}<br><b>Columns:</b> ${q.columns.join(', ')}</div>`;
         }
-    }, 60000);
+        inputHTML += legend + `<div class="options-grid">`;
+        q.options.forEach((opt, i) => {
+            let sel = localAns == i ? 'selected' : '';
+            let chk = localAns == i ? 'checked' : '';
+            inputHTML += `
+                <label class="option-box ${sel}" id="opt-${i}" onclick="setTempOption(${i})">
+                    <input type="radio" name="ans" ${chk}> 
+                    <div>${opt}</div>
+                </label>`;
+        });
+        inputHTML += `</div>`;
+    }
+
+    area.innerHTML = `
+        <div class="question-card">
+            <div class="q-meta"><span>Q${idx+1} (${q.type})</span><span>Marks: ${marks}</span></div>
+            ${imgHTML}
+            <div class="q-text">${questionText}</div>
+            ${inputHTML}
+            <div style="margin-top:30px; display:flex; justify-content:space-between; border-top:1px solid #eee; padding-top:20px;">
+                <div style="display:flex; gap:10px;">
+                    <button class="btn btn-outline" onclick="saveNext()">Save & Next</button>
+                    <button class="btn btn-outline" style="border-color:var(--warning)" onclick="markRev()">Mark Review</button>
+                    <button class="btn btn-outline" onclick="clearResp()">Clear</button>
+                </div>
+                <button class="btn btn-primary" onclick="loadQuestion(${idx < flatQuestions.length-1 ? idx+1 : idx})">Next ></button>
+            </div>
+        </div>`;
+
+    updatePaletteNode(idx);
+    if(window.MathJax) MathJax.typesetPromise();
+};
+
+// Temporary answer state for current question
+let tempAnswer = null;
+
+// Option selection handlers (do not re-render immediately)
+window.setTempOption = (i) => {
+    tempAnswer = i;
+    // Update UI selection
+    document.querySelectorAll('.option-box').forEach(e => e.classList.remove('selected'));
+    const opt = document.getElementById(`opt-${i}`);
+    if (opt) opt.classList.add('selected');
+};
+
+window.setTempMultiOption = (i) => {
+    if (!Array.isArray(tempAnswer)) tempAnswer = [];
+    const idx = tempAnswer.indexOf(i);
+    if (idx === -1) tempAnswer.push(i);
+    else tempAnswer.splice(idx, 1);
+
+    // Update UI selection
+    document.querySelectorAll('.option-box').forEach((e, j) => {
+        if (tempAnswer.includes(j)) e.classList.add('selected');
+        else e.classList.remove('selected');
+    });
+};
+
+window.setTempInt = (v) => { tempAnswer = v; };
+
+// Save & Next
+window.saveNext = () => {
+    userAnswers[currentQIdx] = tempAnswer;
+    questionStatus[currentQIdx] = (tempAnswer !== undefined && tempAnswer !== null && ((Array.isArray(tempAnswer) && tempAnswer.length) || (!Array.isArray(tempAnswer) && tempAnswer !== ''))) ? 'answered' : 'not-answered';
+    updatePaletteNode(currentQIdx);
+    if(currentQIdx < flatQuestions.length-1) loadQuestion(currentQIdx+1);
+};
+
+// Mark Review
+window.markRev = () => {
+    userAnswers[currentQIdx] = tempAnswer;
+    questionStatus[currentQIdx] = (tempAnswer !== undefined && tempAnswer !== null && ((Array.isArray(tempAnswer) && tempAnswer.length) || (!Array.isArray(tempAnswer) && tempAnswer !== ''))) ? 'marked-answered' : 'marked';
+    updatePaletteNode(currentQIdx);
+    if(currentQIdx < flatQuestions.length-1) loadQuestion(currentQIdx+1);
+};
+
+// Clear
+window.clearResp = () => {
+    tempAnswer = null;
+    delete userAnswers[currentQIdx];
+    questionStatus[currentQIdx] = 'not-answered';
+    updatePaletteNode(currentQIdx);
+    loadQuestion(currentQIdx);
+};
+
+// Define your palette colors
+const paletteColors = {
+    'answered': 'var(--success)',        // green
+    'not-answered': 'var(--danger)',     // red
+    'marked': 'var(--purple)',           // purple
+    'marked-answered': 'var(--purple)',  // purple (can be different if you want)
+    'not-visited': '#ccc',               // gray
+    'current': 'var(--primary)'          // blue (for current question border)
+};
+
+// Helper to get all statuses for a question
+function getStatuses(i) {
+    // You can expand this logic if you want to support more than one status per question
+    // For now, let's assume you want to show both 'answered' and 'marked' if marked-answered
+    const status = questionStatus[i];
+    if (status === 'marked-answered') return ['answered', 'marked'];
+    if (status === 'answered') return ['answered'];
+    if (status === 'marked') return ['marked'];
+    if (status === 'not-answered') return ['not-answered'];
+    if (status === 'not-visited') return ['not-visited'];
+    return [];
 }
 
-// RENDER PALETTE
+// Render the palette with pie chart backgrounds
 function renderPalette() {
     const p = document.getElementById('palette');
-    p.innerHTML = '';
-    const total = currentExam.questions.length;
-    for(let i=0;i<total;i++){
-        const node = document.createElement('div');
-        node.className = 'q-node unanswered';
-        node.id = `q-node-${i}`;
-        node.setAttribute('role','button');
-        node.setAttribute('tabindex','0');
-        node.dataset.index = i;
-        node.innerText = (i+1);
-        node.onclick = () => loadQuestion(i);
-        node.onkeydown = (e) => { if(e.key === 'Enter' || e.key === ' ') loadQuestion(i); };
-        p.appendChild(node);
-    }
-    updatePaletteVisuals();
-}
-
-function updatePaletteVisuals() {
-    const total = currentExam.questions.length;
-    let answered = 0;
-    currentExam.questions.forEach((_, i) => {
-        const node = document.getElementById(`q-node-${i}`);
-        if(!node) return;
-        node.classList.remove('answered','seen','unanswered','marked','flagged','current');
-        if (userAnswers[i] !== undefined) { node.classList.add('answered'); answered++; }
-        else if (seenQuestions.has(i)) node.classList.add('seen');
-        else node.classList.add('unanswered');
-    });
-    // current highlight
-    const cur = document.getElementById(`q-node-${currentIndex}`);
-    if(cur) cur.classList.add('current');
-
-    // progress bar
-    const pct = Math.round((answered/total)*100);
-    const fill = document.getElementById('palette-fill');
-    if(fill) fill.style.width = `${pct}%`;
-    const count = document.getElementById('palette-count');
-    if(count) count.innerText = `${answered} / ${total}`;
-    const percent = document.getElementById('palette-percent');
-    if(percent) percent.innerText = `${pct}%`;
-}
-
-// LOAD QUESTION
-window.loadQuestion = (i) => {
-    currentIndex = i;
-    seenQuestions.add(i);
-    const q = currentExam.questions[i];
-    const qArea = document.getElementById('q-area');
-
-    // build options markup that matches CSS (.option, .option-number, .option-text)
-    let optionsHtml = '';
-    if(q.type === 'MCQ' && Array.isArray(q.options)) {
-        optionsHtml = q.options.map((o, idx) => {
-            const checked = userAnswers[i] === idx ? 'checked' : '';
-            return `
-            <label class="option" tabindex="0">
-                <input type="radio" name="answer" ${checked} onclick="window.save(${i}, ${idx})">
-                <span class="option-number">${String.fromCharCode(65 + idx)}</span>
-                <span class="option-text">${o}</span>
-            </label>`;
-        }).join('');
-    } else if (q.type === 'INTEGER') {
-        const val = (userAnswers[i] !== undefined) ? userAnswers[i] : '';
-        optionsHtml = `<div style="margin-top:12px;"><input type="number" id="int-${i}" value="${val}" onchange="window.save(${i}, this.value)" /></div>`;
-    } else {
-        optionsHtml = `<div style="margin-top:12px;"><input type="text" id="txt-${i}" value="${userAnswers[i] || ''}" onchange="window.save(${i}, this.value)" /></div>`;
-    }
-
-    qArea.innerHTML = `
-        <div style="display:flex; justify-content:space-between; align-items:center; gap:12px;">
-            <h3 style="margin:0">Q${i+1}: ${q.text}</h3>
-            <div style="color:var(--muted); font-size:0.95rem">Marks: ${q.marks || 4}</div>
+    p.innerHTML = `
+        <div class="palette-header">
+            <strong>${currentUser.displayName}</strong>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:5px; font-size:0.75rem; margin-top:10px; color:#666;">
+                <div><span style="color:var(--success)">●</span> Ans</div>
+                <div><span style="color:var(--danger)">●</span> No Ans</div>
+                <div><span style="color:var(--purple)">●</span> Mark</div>
+                <div><span>○</span> Visit</div>
+            </div>
         </div>
-        <div style="margin-top:18px">${optionsHtml}</div>
-    `;
+        <div class="palette-grid" id="p-grid"></div>`;
+    const grid = document.getElementById('p-grid');
+    for (let i = 0; i < flatQuestions.length; i++) {
+        const d = document.createElement('div');
+        d.className = 'q-node';
+        d.id = `node-${i}`;
+        d.innerText = i+1;
+        d.onclick = () => loadQuestion(i);
 
-    // visual updates for selected option (in case we loaded checked)
-    setTimeout(() => { markSelectedOptionUI(i); }, 0);
+        // Set pie chart background
+        const statuses = getStatuses(i);
+        if (statuses.length > 1) {
+            // Pie chart: split equally among statuses
+            const step = 100 / statuses.length;
+            let stops = [];
+            for (let j = 0; j < statuses.length; j++) {
+                const color = paletteColors[statuses[j]];
+                stops.push(`${color} ${j*step}% ${(j+1)*step}%`);
+            }
+            d.style.background = `conic-gradient(${stops.join(', ')})`;
+        } else if (statuses.length === 1) {
+            d.style.background = paletteColors[statuses[0]];
+        } else {
+            d.style.background = '#ccc';
+        }
 
-    updatePaletteVisuals();
-};
+        // Highlight current question
+        if(i === currentQIdx) d.style.border = `2px solid ${paletteColors.current}`;
+        else d.style.border = '2px solid #fff';
 
-// SAVE ANSWER
-window.save = (i, v) => {
-    // normalize numeric string to number for integer types
-    if(typeof v === 'string' && currentExam.questions[i] && currentExam.questions[i].type === 'INTEGER') {
-        const n = v.trim();
-        userAnswers[i] = n === '' ? undefined : (isNaN(Number(n)) ? n : Number(n));
-    } else {
-        userAnswers[i] = v;
+        grid.appendChild(d);
     }
-
-    // mark answered node
-    const node = document.getElementById(`q-node-${i}`);
-    if(node) {
-        node.classList.remove('unanswered','seen');
-        node.classList.add('answered');
-    }
-
-    // update option selected UI
-    markSelectedOptionUI(i);
-
-    // update progress
-    updatePaletteVisuals();
-};
-
-// helper: toggle .selected on option labels for a question
-function markSelectedOptionUI(i) {
-    const qArea = document.getElementById('q-area');
-    if(!qArea) return;
-    const inputs = qArea.querySelectorAll('input[type="radio"], input[type="checkbox"]');
-    inputs.forEach(inp => {
-        const parent = inp.closest('.option');
-        if(!parent) return;
-        if(inp.checked) parent.classList.add('selected');
-        else parent.classList.remove('selected');
-    });
 }
 
-// TIMER & SUBMIT
-function formatTime(sec) {
-    if (sec < 0) sec = 0;
-    const h = Math.floor(sec / 3600);
-    const m = Math.floor((sec % 3600) / 60);
-    const s = sec % 60;
-    return [h, m, s].map(n => String(n).padStart(2,'0')).join(':');
+// Update a single palette node (for dynamic updates)
+function updatePaletteNode(i) {
+    const n = document.getElementById(`node-${i}`);
+    if(n) {
+        // Remove all classes
+        n.className = 'q-node';
+        // Set pie chart background
+        const statuses = getStatuses(i);
+        if (statuses.length > 1) {
+            const step = 100 / statuses.length;
+            let stops = [];
+            for (let j = 0; j < statuses.length; j++) {
+                const color = paletteColors[statuses[j]];
+                stops.push(`${color} ${j*step}% ${(j+1)*step}%`);
+            }
+            n.style.background = `conic-gradient(${stops.join(', ')})`;
+        } else if (statuses.length === 1) {
+            n.style.background = paletteColors[statuses[0]];
+        } else {
+            n.style.background = '#ccc';
+        }
+        // Highlight current
+        if(i === currentQIdx) n.style.border = `2px solid ${paletteColors.current}`;
+        else n.style.border = '2px solid #fff';
+    }
 }
 
 function startTimer(sec) {
     let rem = sec;
-    document.getElementById('timer').innerText = formatTime(rem);
+    if(timerInterval) clearInterval(timerInterval);
     timerInterval = setInterval(() => {
         rem--;
-        document.getElementById('timer').innerText = formatTime(rem);
-        if(rem<=0) {
-            clearInterval(timerInterval);
-            submitExam(false);
-        }
+        const h = Math.floor(rem/3600); const m = Math.floor((rem%3600)/60); const s = rem%60;
+        document.getElementById('timer').innerText = `${h<10?'0'+h:h}:${m<10?'0'+m:m}:${s<10?'0'+s:s}`;
+        if(rem < 300) document.getElementById('timer').classList.add('critical');
+        if(rem%60===0 && liveDocId) updateDoc(doc(db,"live_status",liveDocId), {lastActive: new Date().toISOString()});
+        if(rem<=0) window.submitExam();
     }, 1000);
 }
 
-document.getElementById('submit-btn').onclick = () => {
-    if(confirm("Submit Exam?")) submitExam(false);
+window.submitExam = async () => {
+    if(!confirm("Submit Exam?")) return;
+    document.getElementById('submit-btn').innerText = "Processing...";
+    clearInterval(timerInterval);
+    try { document.exitFullscreen().catch(()=>{}); } catch(e){}
+
+    let score = 0;
+    let details = [];
+
+    currentExam.questions.forEach((q, i) => {
+        let uAns = userAnswers[i];
+        // For multi correct, ensure empty array is saved as null
+        if (q.type === 'multi' && (!uAns || uAns.length === 0)) uAns = null;
+        // For passage, ensure empty object is saved as null
+        if (q.type === 'passage' && (!uAns || Object.keys(uAns).length === 0)) uAns = null;
+        // For other types, if undefined, set to null
+        if (uAns === undefined) uAns = null;
+
+        let marks = 0;
+        let isCorrect = false;
+
+        // Scoring logic (simple, you may want to expand for multi/passage)
+        if (uAns !== null) {
+            if (q.type === 'multi' && Array.isArray(uAns) && Array.isArray(q.answer)) {
+                isCorrect = (uAns.length === q.answer.length && uAns.every(v => q.answer.includes(v)));
+                marks = isCorrect ? parseInt(q.marks || 4) : -parseInt(q.negativeMarks || 1);
+            } else if (q.type === 'passage' && Array.isArray(q.questions)) {
+                // For passage, you may want to store sub-question results
+                // Here, just mark as attempted
+                marks = 0; // You can sum sub-question marks if needed
+            } else if (uAns == (q.answer ?? q.correct)) {
+                marks = parseInt(q.marks || 4);
+                isCorrect = true;
+            } else {
+                marks = -parseInt(q.negativeMarks || 1);
+            }
+        }
+        score += marks;
+        details.push({
+            qIdx: i,
+            userAns: uAns,
+            correct: q.answer ?? q.correct ?? null,
+            isCorrect,
+            marks,
+            time: timeLog[i] || 0
+        });
+    });
+
+    try {
+        await addDoc(collection(db, "results"), {
+            uid: currentUser.uid,
+            examTitle: currentExam.title,
+            testId: currentExam.id,
+            score,
+            details,
+            totalTimeSpent: Object.values(timeLog).reduce((a, b) => a + b, 0),
+            timestamp: new Date().toISOString()
+        });
+        if (liveDocId) updateDoc(doc(db, "live_status", liveDocId), { status: "Completed" });
+        alert(`Submitted! Score: ${score}`);
+        location.reload();
+    } catch(e) {
+        console.error(e);
+        alert("Error: " + e.message);
+        document.getElementById('submit-btn').innerText = "Submit";
+    }
+};
+document.getElementById('submit-btn').onclick = window.submitExam;
+
+// --- ANALYSIS FUNCTIONS ---
+window.loadAnalysis = async (resultId) => {
+    try {
+        const resSnap = await getDoc(doc(db, "results", resultId));
+        currentAnalysisData = resSnap.data();
+        
+        const testSnap = await getDoc(doc(db, "tests", currentAnalysisData.testId));
+        currentTestSchema = testSnap.data();
+
+        // FIX: Flatten analysis questions here!
+        flattenAnalysisQuestions(currentTestSchema.questions);
+
+        switchView('anOverview');
+        document.getElementById('an-score').innerText = `${currentAnalysisData.score} / ${currentTestSchema.questions.length * 4}`;
+
+        // --- Exact Rank Calculation ---
+        // 1. Fetch all results for this test
+        const allResultsSnap = await getDocs(query(collection(db, "results"), where("testId", "==", currentAnalysisData.testId)));
+        const allResults = [];
+        allResultsSnap.forEach(doc => {
+            const data = doc.data();
+            data.id = doc.id;
+            allResults.push(data);
+        });
+
+        // 2. Sort by score descending, then by totalTimeSpent ascending (for tie-break)
+        allResults.sort((a, b) => {
+            if (b.score !== a.score) return b.score - a.score;
+            return (a.totalTimeSpent || 0) - (b.totalTimeSpent || 0);
+        });
+
+        // 3. Find rank (1-based)
+        const myRank = allResults.findIndex(r => r.uid === currentUser.uid && r.timestamp === currentAnalysisData.timestamp) + 1;
+        document.getElementById('an-rank').innerText = myRank > 0 ? `# ${myRank}` : 'N/A';
+
+        let correctCount = currentAnalysisData.details.filter(d => d.isCorrect).length;
+        let attemptedCount = currentAnalysisData.details.filter(d => d.userAns !== null).length;
+        document.getElementById('an-accuracy').innerText = attemptedCount > 0 ? Math.round((correctCount/attemptedCount)*100) + '%' : '0%';
+
+        const grid = document.getElementById('an-grid');
+        grid.innerHTML = '';
+        currentAnalysisData.details.forEach((d, i) => {
+            let className = 'an-skip';
+            if(d.userAns !== null) className = d.isCorrect ? 'an-correct' : 'an-wrong';
+            grid.innerHTML += `<div class="an-node ${className}" onclick="window.loadSolutionDetail(${i})">${i+1}</div>`;
+        });
+
+    } catch(e) { console.error(e); alert("Failed to load analysis"); }
 };
 
-async function submitExam(disqualified) {
-    clearInterval(timerInterval);
-    document.exitFullscreen().catch(()=>{});
+window.loadSolutionDetail = (idx) => {
+    currentSolIdx = idx;
+    switchView('anDetail');
+    renderSolution(idx);
+};
 
-    // 1. Calculate Score
-    let score = 0;
-    currentExam.questions.forEach((q, i) => {
-        if(q.type=='MCQ' && userAnswers[i] == q.correct) score += 4;
-        else if(q.type=='INTEGER' && userAnswers[i] == q.correct) score += 4;
-        else if(userAnswers[i] !== undefined) score -= 1;
-    });
-    if(disqualified) score = -10;
+window.backToAnalysisGrid = () => switchView('anOverview');
 
-    // 2. Save Result (include answers for detailed analysis)
-    const resultDoc = await addDoc(collection(db, "results"), {
-        uid: currentUser.uid,
-        email: currentUser.email,
-        name: currentUser.displayName || '',
-        testId: currentExam.id,
-        score: score,
-        answers: userAnswers,
-        status: disqualified ? "DISQUALIFIED" : "COMPLETED",
-        timestamp: new Date().toISOString()
-    });
+function renderSolution(idx) {
+    const q = analysisFlatQuestions[idx];
+    const detail = currentAnalysisData.details[idx];
 
-    // 3. Update Live Status to Completed
-    if (liveStatusDocId) {
-        await updateDoc(doc(db, "live_status", liveStatusDocId), {
-            status: disqualified ? "Disqualified" : "Completed"
-        });
+    let statusClass = 'status-skip', statusText = 'Skipped';
+    if (detail.userAns !== null) {
+        if (detail.isCorrect) { statusClass = 'status-correct'; statusText = 'Correct'; }
+        else { statusClass = 'status-wrong'; statusText = 'Wrong'; }
     }
 
-    // Show results/analysis view for this exam
-    await loadExamAnalysis(currentExam.id);
-    document.getElementById('exam-view').classList.add('hidden');
-    document.getElementById('result-view').classList.remove('hidden');
+    // Get question text
+    let questionText = q.question || q.text || '';
+    let passageHTML = q.passage ? `<div class="passage">${q.passage}</div>` : '';
+    let optionsHTML = '';
+    let userAnsHTML = '';
+    let correctAnsHTML = '';
+
+    // Helper to get option text
+    const getOptTxt = (opt) => typeof opt === 'object' ? (opt.text || '') : opt;
+
+    // Render options and answers for each type
+    if (q.type === 'single' || q.type === 'MCQ' || q.type === 'SCQ') {
+        optionsHTML = `<div class="options-grid">`;
+        q.options.forEach((opt, i) => {
+            let txt = getOptTxt(opt);
+            let borderStyle = '2px solid #ddd', bgStyle = '#fff';
+            if (i == (q.answer ?? q.correct)) { borderStyle = '2px solid var(--success)'; bgStyle = '#e6fffa'; }
+            else if (detail.userAns == i && !detail.isCorrect) { borderStyle = '2px solid var(--danger)'; bgStyle = '#fff5f5'; }
+            optionsHTML += `
+                <div class="option-box" style="border:${borderStyle}; background:${bgStyle}; cursor:default">
+                    <div>${txt}</div>
+                    ${i == (q.answer ?? q.correct) ? '<i class="fa fa-check" style="color:green; margin-left:auto"></i>' : ''}
+                    ${(detail.userAns == i && !detail.isCorrect) ? '<i class="fa fa-times" style="color:red; margin-left:auto"></i>' : ''}
+                </div>`;
+        });
+        optionsHTML += `</div>`;
+        userAnsHTML = (detail.userAns !== null) ? `<div><b>Your Answer:</b> ${getOptTxt(q.options[detail.userAns])}</div>` : '';
+        correctAnsHTML = `<div><b>Correct Answer:</b> ${getOptTxt(q.options[q.answer ?? q.correct])}</div>`;
+    } else if (q.type === 'multi') {
+        optionsHTML = `<div class="options-grid">`;
+        q.options.forEach((opt, i) => {
+            let txt = getOptTxt(opt);
+            let isCorrect = Array.isArray(q.answer) && q.answer.includes(i);
+            let isUser = Array.isArray(detail.userAns) && detail.userAns.includes(i);
+            let borderStyle = '2px solid #ddd', bgStyle = '#fff';
+            if (isCorrect) { borderStyle = '2px solid var(--success)'; bgStyle = '#e6fffa'; }
+            if (isUser && !isCorrect) { borderStyle = '2px solid var(--danger)'; bgStyle = '#fff5f5'; }
+            optionsHTML += `
+                <div class="option-box" style="border:${borderStyle}; background:${bgStyle}; cursor:default">
+                    <div>${txt}</div>
+                    ${isCorrect ? '<i class="fa fa-check" style="color:green; margin-left:auto"></i>' : ''}
+                    ${(isUser && !isCorrect) ? '<i class="fa fa-times" style="color:red; margin-left:auto"></i>' : ''}
+                </div>`;
+        });
+        optionsHTML += `</div>`;
+        userAnsHTML = (Array.isArray(detail.userAns)) ? `<div><b>Your Answer:</b> ${detail.userAns.map(i => getOptTxt(q.options[i])).join(', ')}</div>` : '';
+        correctAnsHTML = (Array.isArray(q.answer)) ? `<div><b>Correct Answer:</b> ${q.answer.map(i => getOptTxt(q.options[i])).join(', ')}</div>` : '';
+    } else if (q.type === 'integer' || q.type === 'numerical') {
+        userAnsHTML = (detail.userAns !== null) ? `<div><b>Your Answer:</b> ${detail.userAns}</div>` : '';
+        correctAnsHTML = `<div><b>Correct Answer:</b> ${q.answer ?? q.correct}</div>`;
+    } else if (q.type === 'matrix') {
+        let legend = '';
+        if (q.rows && q.columns) {
+            legend = `<div class="matrix-legend"><b>Rows:</b> ${q.rows.join(', ')}<br><b>Columns:</b> ${q.columns.join(', ')}</div>`;
+        }
+        optionsHTML = legend + `<div class="options-grid">`;
+        q.options.forEach((opt, i) => {
+            let borderStyle = '2px solid #ddd', bgStyle = '#fff';
+            if (i == (q.answer ?? q.correct)) { borderStyle = '2px solid var(--success)'; bgStyle = '#e6fffa'; }
+            else if (detail.userAns == i && !detail.isCorrect) { borderStyle = '2px solid var(--danger)'; bgStyle = '#fff5f5'; }
+            optionsHTML += `
+                <div class="option-box" style="border:${borderStyle}; background:${bgStyle}; cursor:default">
+                    <div>${opt}</div>
+                    ${i == (q.answer ?? q.correct) ? '<i class="fa fa-check" style="color:green; margin-left:auto"></i>' : ''}
+                    ${(detail.userAns == i && !detail.isCorrect) ? '<i class="fa fa-times" style="color:red; margin-left:auto"></i>' : ''}
+                </div>`;
+        });
+        optionsHTML += `</div>`;
+        userAnsHTML = (detail.userAns !== null) ? `<div><b>Your Answer:</b> ${q.options[detail.userAns]}</div>` : '';
+        correctAnsHTML = `<div><b>Correct Answer:</b> ${q.options[q.answer ?? q.correct]}</div>`;
+    } else {
+        // Fallback for other types
+        userAnsHTML = (detail.userAns !== null) ? `<div><b>Your Answer:</b> ${detail.userAns}</div>` : '';
+        correctAnsHTML = `<div><b>Correct Answer:</b> ${q.answer ?? q.correct}</div>`;
+    }
+
+    document.getElementById('sol-content').innerHTML = `
+        <div class="sol-status ${statusClass}">${statusText}</div>
+        <div class="q-meta"><span>Q${idx+1}</span><span>Time Spent: ${Math.round(detail.time)}s</span></div>
+        ${q.img ? `<img src="${q.img}" class="q-img">` : ''}
+        ${passageHTML}
+        <div class="q-text">${questionText}</div>
+        ${optionsHTML}
+        ${userAnsHTML}
+        ${correctAnsHTML}
+        ${q.explanation ? `<div class="explanation-box"><strong>Explanation:</strong><br>${q.explanation}</div>` : ''}
+    `;
+
+    document.getElementById('prev-sol-btn').disabled = idx === 0;
+    document.getElementById('next-sol-btn').disabled = idx === analysisFlatQuestions.length - 1;
+    document.getElementById('prev-sol-btn').onclick = () => renderSolution(idx - 1);
+    document.getElementById('next-sol-btn').onclick = () => renderSolution(idx + 1);
+
+    if(window.MathJax) MathJax.typesetPromise();
 }
 
-// VIEW ANALYSIS FROM DASHBOARD
-window.viewAnalysis = async (testId) => {
-    const docSnap = await getDoc(doc(db, "tests", testId));
-    if(!docSnap.exists()) {
-        alert('Exam not found');
-        return;
+function renderExamCard(exam) {
+  const expiryText = exam.expiryDate ? `<div class="expiry-date">Expiry: ${new Date(exam.expiryDate).toLocaleString()}</div>` : '';
+  return `
+    <div class="exam-card">
+      <div class="exam-title">${exam.title}</div>
+      ${expiryText}
+      <div class="exam-window">Window: ${new Date(exam.startTime).toLocaleString()} - ${new Date(exam.endTime).toLocaleString()}</div>
+      <button class="btn btn-primary" onclick="startExam('${exam.id}')">Start</button>
+    </div>
+  `;
+}
+
+function renderQuestion(q, idx) {
+  let html = `<div class="q-title"><b>Q${idx+1}.</b> `;
+  if (q.type === "passage") {
+    html += `<div class="passage">${q.passage}</div>`;
+    q.questions.forEach((subq, subIdx) => {
+      html += renderQuestion(subq, `${idx+1}.${subIdx+1}`);
+    });
+    return html + '</div>';
+  }
+  html += q.question + '</div><div class="q-options">';
+  if (q.type === "single") {
+    q.options.forEach((opt, i) => {
+      html += `<label><input type="radio" name="q${idx}" value="${i}"> ${opt}</label><br>`;
+    });
+  } else if (q.type === "multi") {
+    q.options.forEach((opt, i) => {
+      html += `<label><input type="checkbox" name="q${idx}" value="${i}"> ${opt}</label><br>`;
+    });
+  } else if (q.type === "integer" || q.type === "numerical") {
+    html += `<input type="number" name="q${idx}" step="any" class="num-input">`;
+  } else if (q.type === "matrix") {
+    if (q.rows && q.columns) {
+      html = `<div class="matrix-legend"><b>Rows:</b> ${q.rows.join(', ')}<br><b>Columns:</b> ${q.columns.join(', ')}</div>` + html;
     }
-    await loadExamAnalysis(testId);
-    document.getElementById('auth-view').classList.add('hidden');
-    document.getElementById('dashboard-view').classList.add('hidden');
-    document.getElementById('exam-view').classList.add('hidden');
-    document.getElementById('result-view').classList.remove('hidden');
-};
+    q.options.forEach((opt, i) => {
+      html += `<label><input type="radio" name="q${idx}" value="${i}"> ${opt}</label><br>`;
+    });
+  }
+  html += '</div>';
+  return html;
+}
 
-// LOAD EXAM ANALYSIS & LIVE RANK
-async function loadExamAnalysis(testId) {
-    const testSnap = await getDoc(doc(db, "tests", testId));
-    if(!testSnap.exists()) {
-        document.getElementById('detailed-solutions').innerText = 'No exam data available.';
-        return;
-    }
-    const examData = testSnap.data();
-
-    // fetch all results for this test
-    const q = query(collection(db, "results"), where("testId", "==", testId));
-    const snap = await getDocs(q);
-    const results = [];
-    snap.forEach(s => results.push({ id: s.id, ...s.data() }));
-
-    // Normalize answers keys to numeric indices (Firestore stores object keys as strings)
-    results.forEach(r => {
-        if (r.answers && typeof r.answers === 'object') {
-            const norm = {};
-            Object.keys(r.answers).forEach(k => {
-                // convert numeric-like keys to numbers
-                const idx = Number(k);
-                norm[idx] = r.answers[k];
+// Flatten questions for easier navigation and analysis
+function flattenQuestions(questions) {
+    flatQuestions = [];
+    flatToOriginal = [];
+    questions.forEach((q, i) => {
+        if (q.type === 'passage' && Array.isArray(q.questions)) {
+            q.questions.forEach((subq, subIdx) => {
+                flatQuestions.push({
+                    ...subq,
+                    passage: q.passage,
+                    parentIdx: i,
+                    subIdx: subIdx,
+                    type: subq.type || 'single' // default to single if not specified
+                });
+                flatToOriginal.push({ parent: i, sub: subIdx });
             });
-            r.answers = norm;
         } else {
-            r.answers = {};
+            flatQuestions.push(q);
+            flatToOriginal.push({ parent: i, sub: null });
         }
     });
+}
 
-    // sort by score desc, timestamp asc
-    results.sort((a, b) => {
-        if ((b.score||0) !== (a.score||0)) return (b.score||0) - (a.score||0);
-        return new Date(a.timestamp || 0) - new Date(b.timestamp || 0);
-    });
-
-    // compute top performers list (top 5)
-    const top = results.slice(0, 5);
-
-    // find current user's result and rank (match by uid or email)
-    const uid = currentUser?.uid;
-    const myIndex = uid ? results.findIndex(r => r.uid === uid || r.email === currentUser.email) : -1;
-    const myResult = myIndex >= 0 ? results[myIndex] : null;
-    const myRank = myIndex >= 0 ? (myIndex + 1) : 'Not attempted';
-
-    // aggregate per-question stats (requires results to include answers)
-    const qCount = Array.isArray(examData.questions) ? examData.questions.length : 0;
-    const perQ = Array.from({length: qCount}, () => ({ attempts:0, correct:0, optionCount: {} }));
-
-    results.forEach(r => {
-        const ans = r.answers || {};
-        for (let i = 0; i < qCount; i++) {
-            if (Object.prototype.hasOwnProperty.call(ans, i) && ans[i] !== undefined && ans[i] !== null && ans[i] !== '') {
-                perQ[i].attempts++;
-                const given = ans[i];
-                perQ[i].optionCount[given] = (perQ[i].optionCount[given] || 0) + 1;
-                const correct = examData.questions[i].correct;
-                if (String(given) === String(correct)) perQ[i].correct++;
-            }
+// Flatten analysis questions for easier navigation in analysis view
+function flattenAnalysisQuestions(questions) {
+    analysisFlatQuestions = [];
+    analysisFlatToOriginal = [];
+    questions.forEach((q, i) => {
+        if (q.type === 'passage' && Array.isArray(q.questions)) {
+            q.questions.forEach((subq, subIdx) => {
+                analysisFlatQuestions.push({
+                    ...subq,
+                    passage: q.passage,
+                    parentIdx: i,
+                    subIdx: subIdx,
+                    type: subq.type || 'single'
+                });
+                analysisFlatToOriginal.push({ parent: i, sub: subIdx });
+            });
+        } else {
+            analysisFlatQuestions.push(q);
+            analysisFlatToOriginal.push({ parent: i, sub: null });
         }
     });
+}
 
-    // overall stats
-    const totalAttempts = results.length;
-    const avgScore = totalAttempts ? Math.round(results.reduce((s,r)=>s+(r.score||0),0)/totalAttempts) : 0;
-
-    // populate result-summary
-    document.getElementById('res-score').innerText = myResult ? myResult.score : 'N/A';
-    document.getElementById('res-rank').innerText = myRank;
-    document.getElementById('res-acc').innerText = myResult ? `${calculateAccuracy(myResult.answers, examData.questions)}%` : `${totalAttempts ? Math.round((perQ.reduce((s,p)=>s+p.correct,0) / (totalAttempts * qCount))*100) : 0}%`;
-
-    // build detailed HTML
-    const container = document.getElementById('detailed-solutions');
-    container.innerHTML = `<h3 style="margin-top:0">${escapeHtml(examData.title || 'Exam')} — Detailed Analysis</h3>
-        <div style="display:flex; gap:16px; margin-bottom:12px; align-items:center;">
-            <div><strong>Total Attempts:</strong> ${totalAttempts}</div>
-            <div><strong>Average Score:</strong> ${avgScore}</div>
-        </div>
-        <div style="margin-bottom:18px;">
-            <h4>Top Performers</h4>
-            <ol id="top-list">${top.map(t => `<li>${escapeHtml(t.name||t.email||'Unknown')} — ${t.score}</li>`).join('')}</ol>
-        </div>
-        <div>
-            <h4>Per Question Stats</h4>
-            <div id="per-q-list">${ Array.isArray(examData.questions) ? examData.questions.map((qq, idx) => {
-                const stats = perQ[idx] || { attempts:0, correct:0, optionCount:{} };
-                const pctCorrect = stats.attempts ? Math.round((stats.correct / stats.attempts)*100) : 0;
-                const optionDist = (qq.options && qq.options.length) ? Object.keys(stats.optionCount).map(k => {
-                    const count = stats.optionCount[k] || 0;
-                    // if options indexed numerically, show letter; otherwise show as-is
-                    const label = (isFinite(k) && qq.options[Number(k)] !== undefined) ? String.fromCharCode(65+Number(k)) : String(k);
-                    return `<div style="font-size:0.95rem; color:var(--muted)">${escapeHtml(String(label))}: ${count}</div>`;
-                }).join('') : '';
-                return `<div class="card" style="margin-bottom:10px;">
-                    <div style="display:flex; justify-content:space-between; align-items:center;">
-                        <div><strong>Q${idx+1}:</strong> ${escapeHtml(qq.text)}</div>
-                        <div style="color:var(--muted)">${pctCorrect}% correct</div>
-                    </div>
-                    <div style="margin-top:8px">${optionDist}</div>
-                    <div style="margin-top:8px; font-size:0.95rem; color:var(--muted)">Correct Answer: ${formatCorrect(qq)}</div>
-                </div>`;
-            }).join('') : '' }</div>
-        </div>`;
-
-    // helper functions
-    function calculateAccuracy(ansObj = {}, questions = []) {
-        if (!questions || !Array.isArray(questions)) return 0;
-        let correct = 0, attempted = 0;
-        for (let i = 0; i < questions.length; i++) {
-            if (Object.prototype.hasOwnProperty.call(ansObj, i) && ansObj[i] !== undefined && ansObj[i] !== null && ansObj[i] !== '') {
-                attempted++;
-                if (String(ansObj[i]) === String(questions[i].correct)) correct++;
-            }
-        }
-        return attempted ? Math.round((correct/attempted)*100) : 0;
-    }
-    function formatCorrect(q) {
-        if (!q) return '';
-        if (q.type === 'MCQ') return (isFinite(q.correct) ? String.fromCharCode(65 + Number(q.correct)) : String(q.correct));
-        return String(q.correct);
-    }
-    function escapeHtml(s) {
-        return String(s || '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-    }
+// --- On Exam Fetch ---
+window.onExamFetch = (exam) => {
+    // After currentExam = docSnap.data();
+    flattenQuestions(currentExam.questions);
 }

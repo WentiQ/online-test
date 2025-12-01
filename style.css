@@ -1,300 +1,179 @@
+/* =========================================
+   1. GLOBAL VARIABLES & RESET
+   ========================================= */
 :root {
-    --primary: #0F9D58; /* Google Green/IIT style */
-    --dark: #202124;
-    --light: #ffffff;
-    --bg: #f8f9fa;
-    --danger: #d93025;
-    --warning: #f4b400;
-    --accent: #1a73e8;
-    --muted: #6b7280;
-    --card-hover: rgba(26,115,232,0.06);
-    --answered: #0F9D58; /* keep existing primary as answered */
-    --marked: #f4b400;
-
-    /* Semantic state colors (accessible contrasts) */
-    --state-answered: #0F9D58;   /* green */
-    --state-unanswered: #ffffff; /* white */
-    --state-seen: #e8f0fe;       /* light blue bg */
-    --state-current-border: #1a73e8; /* blue border */
-    --state-marked: #f4b400;     /* yellow */
-    --state-flagged: #ff6b6b;    /* red-ish for urgent flag */
+    --primary: #1a73e8;       
+    --primary-dark: #1557b0;
+    --primary-light: #e8f0fe; 
+    --success: #0F9D58;       
+    --warning: #f4b400;       
+    --purple: #a142f4;        
+    --danger: #d93025;        
+    --dark: #202124;          
+    --gray: #5f6368;          
+    --bg-light: #f0f2f5;    
+    --white: #ffffff;
+    --border: #dadce0;
+    --shadow-sm: 0 1px 2px rgba(0,0,0,0.1);
+    --shadow-md: 0 4px 6px rgba(0,0,0,0.1);
+    --transition: all 0.2s ease-in-out;
 }
 
 * { box-sizing: border-box; font-family: 'Roboto', 'Segoe UI', sans-serif; margin: 0; padding: 0; }
-body { background: var(--bg); color: var(--dark); line-height: 1.6; font-family: 'Inter', 'Roboto', 'Segoe UI', system-ui, -apple-system, 'Helvetica Neue', Arial; }
+body { background: var(--bg-light); color: var(--dark); line-height: 1.5; height: 100vh; overflow: hidden; }
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #bdc1c6; border-radius: 4px; }
 
 /* Helpers */
 .hidden { display: none !important; }
-.container { max-width: 1100px; margin: 0 auto; padding: 20px; }
-.btn { padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; transition: 0.3s; }
+.container { max-width: 1200px; margin: 0 auto; padding: 20px; height: 100vh; overflow-y: auto; }
+
+/* Buttons */
+.btn { 
+    padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer; 
+    font-weight: 600; font-size: 14px; transition: var(--transition); 
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+}
+.btn:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); }
 .btn-primary { background: var(--primary); color: white; }
+.btn-success { background: var(--success); color: white; }
 .btn-danger { background: var(--danger); color: white; }
+.btn-outline { background: white; border: 1px solid var(--border); color: var(--dark); }
+.btn-icon { padding: 8px; border-radius: 50%; width: 40px; height: 40px; }
 
-/* Authentication */
-.login-wrapper { display: flex; height: 100vh; justify-content: center; align-items: center; background: white; }
-.login-box { text-align: center; padding: 40px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); border-radius: 8px; }
+/* =========================================
+   2. DASHBOARD UI
+   ========================================= */
+.dashboard-header {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 30px; padding-bottom: 20px; border-bottom: 1px solid var(--border);
+}
+.user-welcome h2 { color: var(--primary); font-size: 1.8rem; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 25px; padding-bottom: 50px; }
 
-/* Cards & Grid */
-.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px; margin-top: 20px; }
-.card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); border-left: 5px solid var(--primary); transition: box-shadow .18s ease, transform .12s ease; }
-.card:hover { box-shadow: 0 8px 24px rgba(16,24,40,0.08); transform: translateY(-4px); background: linear-gradient(180deg, #fff, #fbfdff); }
+.dash-card {
+    background: white; border-radius: 12px; padding: 25px;
+    border: 1px solid rgba(0,0,0,0.05);
+    box-shadow: var(--shadow-sm); transition: var(--transition);
+    position: relative; overflow: hidden;
+}
+.dash-card:hover { box-shadow: var(--shadow-md); transform: translateY(-3px); border-color: var(--primary-light); }
+.dash-card::before {
+    content: ''; position: absolute; top: 0; left: 0; width: 100%; height: 5px;
+    background: linear-gradient(90deg, var(--primary), var(--success));
+}
+.dash-info { display: flex; gap: 15px; color: var(--gray); font-size: 0.9rem; margin-bottom: 20px; margin-top: 10px; }
 
-/* Exam Interface (Strict Mode) */
-body.exam-mode { user-select: none; -webkit-user-select: none; background: #fff; }
+/* =========================================
+   3. EXAM INTERFACE UI
+   ========================================= */
+body.exam-mode { background: #fff; user-select: none; }
 .exam-header { 
+    height: 60px; background: #fff; border-bottom: 1px solid var(--border); 
     display: flex; justify-content: space-between; align-items: center; 
-    padding: 15px 30px; background: var(--dark); color: white; 
-    position: sticky; top: 0; z-index: 1000;
+    padding: 0 20px; box-shadow: var(--shadow-sm); z-index: 100;
 }
-.timer-box { font-size: 1.5rem; font-family: monospace; font-weight: bold; }
-.warning-banner { background: var(--danger); color: white; text-align: center; padding: 10px; font-weight: bold; position: fixed; top: 60px; width: 100%; z-index: 999; animation: flash 1s infinite; }
+.timer-badge { 
+    font-family: 'Roboto Mono', monospace; font-size: 1.2rem; font-weight: 700; 
+    color: var(--primary); background: var(--primary-light); 
+    padding: 6px 12px; border-radius: 6px;
+}
+.timer-badge.critical { color: var(--danger); background: #fce8e6; }
 
-@keyframes flash { 0% {opacity: 1;} 50% {opacity: 0.5;} 100% {opacity: 1;} }
+.exam-layout { display: flex; height: calc(100vh - 60px); position: relative; overflow: hidden; }
 
-.exam-layout { display: flex; height: calc(100vh - 70px); }
-.question-area { flex: 3; padding: 40px; overflow-y: auto; }
-.sidebar { flex: 1; background: #f1f3f4; padding: 20px; border-left: 1px solid #ddd; overflow-y: auto; }
+/* Question Area */
+.question-area { 
+    flex: 1; padding: 40px; overflow-y: auto; background: #fff; 
+    transition: margin-right 0.3s ease;
+}
+.question-card { max-width: 900px; margin: 0 auto; }
 
-.q-palette { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; }
-.q-palette { gap: 12px; grid-template-columns: repeat(auto-fit, minmax(48px, 1fr)); }
+.q-meta { 
+    display: flex; justify-content: space-between; margin-bottom: 20px; 
+    padding: 10px; background: var(--bg-light); border-radius: 6px;
+    font-size: 0.9rem; color: var(--dark); font-weight: 600;
+}
+.q-text { font-size: 1.2rem; margin-bottom: 30px; font-weight: 500; }
+
+/* Options */
+.options-grid { display: flex; flex-direction: column; gap: 15px; }
+.option-box { 
+    display: flex; align-items: center; padding: 15px 20px; 
+    border: 2px solid var(--border); border-radius: 8px; 
+    cursor: pointer; transition: var(--transition); background: #fff;
+}
+.option-box:hover { background: var(--primary-light); border-color: #aecbfa; }
+.option-box.selected { background: #e8f0fe; border-color: var(--primary); box-shadow: 0 0 0 1px var(--primary); }
+.option-box input { width: 18px; height: 18px; margin-right: 15px; accent-color: var(--primary); }
+
+/* Sidebar */
+.sidebar { 
+    width: 320px; background: #f9fafb; border-left: 1px solid var(--border); 
+    display: flex; flex-direction: column; 
+    transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    flex-shrink: 0; white-space: nowrap; overflow: hidden;
+}
+.sidebar.collapsed { width: 0; border-left: none; }
+.palette-header { padding: 15px; border-bottom: 1px solid #ddd; background: #fff; }
+.palette-grid { padding: 15px; display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; overflow-y: auto; }
+
 .q-node { 
-    width: 40px; height: 40px; display: flex; justify-content: center; align-items: center; 
-    background: white; border: 1px solid #ccc; cursor: pointer; border-radius: 50%; 
-    width: 48px; height: 48px; border-radius: 8px; font-weight: 600; font-size: 0.95rem; border: 1px solid #e6e9ee; background: white; transition: transform .12s ease, box-shadow .12s ease; 
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    margin: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+    cursor: pointer;
+    border: 2px solid #fff;
+    transition: border 0.2s;
 }
-.q-node:hover { transform: translateY(-4px); box-shadow: 0 6px 18px rgba(16,24,40,0.06); cursor: pointer; }
-.q-node.active { border-color: var(--primary); border-width: 2px; }
-.q-node.answered { background: var(--answered); color: white; border: none; }
-.q-node.current { border: 2px solid var(--accent); background: #fff; }
-.q-node.marked { background: var(--marked); color: #222; border: none; }
-.q-node.unanswered { background: white; color: var(--muted); }
+.q-node.current { border: 2px solid var(--primary); }
+.q-node.answered { background: var(--success); color: white; border-color: var(--success); }
+.q-node.marked { background: var(--purple); color: white; border-color: var(--purple); }
+.q-node.not-answered { background: var(--danger); color: white; border-color: var(--danger); }
 
-/* Analysis */
-.stat-box { display: flex; gap: 20px; margin-bottom: 30px; }
-.stat { flex: 1; background: white; padding: 20px; text-align: center; border-radius: 8px; }
-.stat h2 { font-size: 2.5rem; color: var(--primary); }
+/* =========================================
+   4. ANALYSIS FULL PAGE STYLES
+   ========================================= */
+.analysis-header {
+    background: white; padding: 20px; margin-bottom: 20px; border-radius: 8px;
+    box-shadow: var(--shadow-sm); display: flex; justify-content: space-between; align-items: center;
+}
+.score-big { font-size: 2.5rem; color: var(--primary); font-weight: bold; }
+.rank-badge { background: var(--purple); color: white; padding: 5px 15px; border-radius: 20px; font-weight: bold; }
 
-/* Forms */
-input, textarea, select { width: 100%; padding: 10px; margin: 10px 0; border: 1px solid #ddd; border-radius: 4px; }
+.analysis-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(60px, 1fr)); gap: 10px; margin-top: 20px; }
+.an-node {
+    height: 50px; display: flex; justify-content: center; align-items: center;
+    border-radius: 6px; font-weight: bold; cursor: pointer; color: white;
+}
+.an-correct { background: var(--success); } /* Attempted & Correct */
+.an-wrong { background: var(--danger); }    /* Attempted & Wrong */
+.an-skip { background: var(--gray); }       /* Skipped */
 
-/* UI improvements: improved palette, buttons, card hover, question-palette states, responsive tweaks */
-.btn { border-radius: 8px; box-shadow: 0 2px 6px rgba(16,24,40,0.06); }
-.btn-primary { background: var(--accent); }
-.btn-primary:hover { filter: brightness(0.98); transform: translateY(-1px); }
-.btn:focus-visible { outline: 3px solid rgba(26,115,232,0.18); outline-offset: 2px; }
+/* Single Question View in Analysis */
+.solution-view { margin-top: 30px; background: white; padding: 30px; border-radius: 8px; box-shadow: var(--shadow-md); }
+.sol-status { font-weight: bold; padding: 5px 10px; border-radius: 4px; display: inline-block; margin-bottom: 10px; }
+.status-correct { background: #e6fffa; color: #276749; border: 1px solid #b2f5ea; }
+.status-wrong { background: #fff5f5; color: #c53030; border: 1px solid #feb2b2; }
+.status-skip { background: #f7fafc; color: #4a5568; border: 1px solid #e2e8f0; }
 
-/* Form inputs: subtle focus */
-input:focus, textarea:focus, select:focus { border-color: var(--accent); box-shadow: 0 4px 18px rgba(26,115,232,0.08); outline: none; }
-
-/* Small helpers for legend/badges */
-.palette-legend { display:flex; gap:10px; align-items:center; margin-top:12px; font-size:0.9rem; color:var(--muted); }
-.palette-legend .dot { width:12px; height:12px; border-radius:50%; display:inline-block; margin-right:6px; }
-
-/* Legend / progress UI in sidebar */
-.palette-summary { margin: 14px 0 8px; display:flex; align-items:center; gap:12px; justify-content:space-between; }
-.palette-legend { display:flex; gap:10px; align-items:center; color:var(--muted); font-size:0.9rem; flex-wrap:wrap; }
-.legend-item { display:flex; gap:8px; align-items:center; }
-.legend-dot { width:12px; height:12px; border-radius:3px; display:inline-block; }
-
-/* Progress bar */
-.palette-progress { width:100%; height:10px; background:#e9eef8; border-radius:999px; overflow:hidden; margin-top:8px; }
-.palette-progress > .fill { height:100%; width:0%; background:linear-gradient(90deg,var(--state-answered), #37b56a); transition:width .4s ease; }
-
-/* q-node tweaks: square/rounded, icon for flagged, focus states */
-.q-node { position:relative; display:inline-flex; justify-content:center; align-items:center; user-select:none; }
-.q-node.unanswered { background:var(--state-unanswered); color:var(--muted); border:1px solid #e6e9ee; }
-.q-node.seen { background:var(--state-seen); color:var(--dark); border:1px solid #dbe9ff; }
-.q-node.answered { background:var(--state-answered); color:white; border:none; }
-.q-node.marked { background:var(--state-marked); color:#222; border:none; }
-.q-node.flagged { background:var(--state-flagged); color:white; border:none; }
-
-/* current question accent */
-.q-node.current { box-shadow: 0 0 0 3px rgba(26,115,232,0.12); border:2px solid var(--state-current-border); background:#fff; color:var(--dark); }
-
-/* small flag icon indicator */
-.q-node .flag { position:absolute; top:6px; right:6px; width:10px; height:10px; border-radius:2px; display:none; }
-.q-node.flagged .flag { display:block; background:rgba(255,255,255,0.9); box-shadow: 0 0 0 2px rgba(255,107,107,0.12) inset; }
-
-/* Accessibility focus */
-.q-node:focus-visible { outline:3px solid rgba(26,115,232,0.16); outline-offset:2px; transform:translateY(-2px); }
-
-/* Tooltip */
-.q-node[data-tooltip]:hover::after,
-.q-node[data-tooltip]:focus::after {
-  content: attr(data-tooltip);
-  position: absolute;
-  bottom: calc(100% + 8px);
-  left: 50%;
-  transform: translateX(-50%);
-  background: #0f1724;
-  color: #fff;
-  padding:6px 8px;
-  border-radius:6px;
-  font-size:12px;
-  white-space:nowrap;
-  box-shadow: 0 6px 18px rgba(16,24,40,0.12);
+.explanation-box {
+    margin-top: 20px; background: #ebf8ff; border-left: 4px solid var(--primary);
+    padding: 15px; border-radius: 4px; color: var(--dark);
 }
 
-/* compact mobile spacing */
-@media (max-width:600px) {
-  .q-palette { gap:8px; grid-template-columns: repeat(auto-fit, minmax(40px, 1fr)); }
-  .palette-legend { gap:8px; font-size:0.85rem; }
-}
+img.q-img { max-width: 100%; height: auto; border-radius: 4px; border: 1px solid #eee; margin: 10px 0; display: block; }
 
-/* Responsive tweaks */
-@media (max-width: 800px) {
-    .exam-layout { flex-direction: column; height: auto; }
-    .q-palette { grid-template-columns: repeat(auto-fit, minmax(40px, 1fr)); }
-    .card { padding: 14px; }
-}
-
-/* ===== Improvements: radio / option alignment & clearer question-palette colors ===== */
-
-/* Align radio buttons and option numbers.
-   Works with markup like:
-   <label class="option"><input type="radio"> <span class="option-number">1</span> <span class="option-text">Option text</span></label>
-*/
-.option {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 10px;
-  border-radius: 10px;
-  background: #fff;
-  border: 1px solid #eef2f7;
-  transition: box-shadow .12s ease, transform .08s ease, border-color .12s ease;
-  margin-bottom: 8px;
-}
-
-.option:hover {
-  transform: translateY(-3px);
-  box-shadow: 0 8px 20px rgba(16,24,40,0.06);
-}
-
-/* Radio inputs: larger, consistent spacing, use accent color where supported */
-.option input[type="radio"],
-.option input[type="checkbox"] {
-  width: 18px;
-  height: 18px;
-  margin: 0;
-  flex: 0 0 22px;
-  accent-color: var(--accent); /* modern browsers */
-  cursor: pointer;
-}
-
-/* Option number badge */
-.option-number {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 34px;
-  height: 34px;
-  border-radius: 8px;
-  background: #f1f5f9;
-  color: var(--muted);
-  font-weight: 700;
-  flex: 0 0 auto;
-  font-size: 0.95rem;
-  border: 1px solid #e6e9ee;
-}
-
-/* Option text expands */
-.option-text {
-  flex: 1 1 auto;
-  color: var(--dark);
-  line-height: 1.4;
-  font-size: 0.98rem;
-}
-
-/* Selected/checked visual — works when markup places input before text and uses adjacent selectors */
-.option input[type="radio"]:checked + .option-number,
-.option input[type="radio"]:checked + .option-number + .option-text,
-.option input[type="checkbox"]:checked + .option-number,
-.option input[type="checkbox"]:checked + .option-number + .option-text {
-  /* subtle highlight */
-  border-color: var(--accent);
-}
-
-/* If markup wraps the whole option in a label and input is inside, these styles still help */
-.option input[type="radio"]:checked {
-  outline: none;
-  box-shadow: 0 0 0 4px rgba(26,115,232,0.08);
-}
-
-/* Improve read / selected option appearance */
-.option.selected { /* JS can toggle this class for instant feedback */
-  background: linear-gradient(180deg, #f9fdff, #ffffff);
-  border-color: rgba(26,115,232,0.18);
-}
-
-/* ===== Question palette: clearer, distinct colors ===== */
-
-/* More distinct palette colors for quick scanning */
-.q-node.unanswered {
-  background: #ffffff;
-  color: var(--muted);
-  border: 1px dashed #cbd5e1;
-  box-shadow: none;
-}
-
-.q-node.seen {
-  background: #e8f0fe; /* light blue */
-  color: var(--dark);
-  border: 1px solid #dbe9ff;
-  box-shadow: none;
-}
-
-.q-node.answered {
-  background: linear-gradient(180deg, #0F9D58, #0d8a4b);
-  color: #ffffff;
-  border: none;
-  box-shadow: 0 6px 14px rgba(15,157,88,0.18);
-}
-
-.q-node.marked {
-  background: linear-gradient(180deg,#f7d86a,#f4b400);
-  color: #222;
-  border: none;
-  box-shadow: 0 6px 14px rgba(244,180,0,0.12);
-}
-
-.q-node.flagged {
-  background: linear-gradient(180deg,#ff8a8a,#ff6b6b);
-  color: white;
-  border: none;
-  box-shadow: 0 6px 18px rgba(255,107,107,0.14);
-}
-
-/* Emphasize current question */
-.q-node.current {
-  box-shadow: 0 8px 20px rgba(26,115,232,0.12);
-  border: 2px solid var(--state-current-border);
-  background: #fff;
-  color: var(--dark);
-}
-
-/* Smooth transitions for status changes */
-.q-node { transition: background .22s ease, transform .12s ease, box-shadow .18s ease, border-color .12s ease; }
-
-/* Legend: colored dots with labels */
-.legend-item .legend-dot.answered { background: linear-gradient(180deg,#0F9D58,#0d8a4b); width:14px; height:14px; border-radius:3px; }
-.legend-item .legend-dot.seen { background: #e8f0fe; width:14px; height:14px; border-radius:3px; border:1px solid #dbe9ff; }
-.legend-item .legend-dot.unanswered { background: #ffffff; width:14px; height:14px; border-radius:3px; border:1px dashed #cbd5e1; }
-.legend-item .legend-dot.marked { background: #f4b400; width:14px; height:14px; border-radius:3px; }
-.legend-item .legend-dot.flagged { background: #ff6b6b; width:14px; height:14px; border-radius:3px; }
-
-/* Progress fill accessibility */
-.palette-progress > .fill {
-  height: 100%;
-  width: 0%;
-  background: linear-gradient(90deg,var(--state-answered), #37b56a);
-  transition: width .4s ease;
-  border-radius: 999px;
-}
-
-/* Mobile tweaks: keep radio & numbers legible */
-@media (max-width:600px) {
-  .option { gap: 8px; padding: 8px; }
-  .option-number { width: 30px; height: 30px; font-size: 0.9rem; }
-  .option input[type="radio"] { width: 16px; height: 16px; flex: 0 0 18px; }
+.expiry-date {
+  color: #b00;
+  font-size: 0.9em;
+  margin-top: 4px;
 }
