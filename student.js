@@ -82,6 +82,11 @@ async function loadDashboard() {
             const attemptCount = myAttempts.length;
             const maxAttempts = t.attemptsAllowed || 1;
             
+            // Skip disabled exams if student has not attempted yet
+            if (t.disabled && attemptCount === 0) {
+                return; // Don't show this exam
+            }
+            
             // Sort attempts by date (newest first) to get latest result for analysis
             myAttempts.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
             const latestResult = myAttempts[0];
@@ -144,7 +149,7 @@ async function loadDashboard() {
         allResults.forEach(r => {
             hist.innerHTML += `
                 <div class="dash-card" style="border-left:4px solid var(--primary); cursor:pointer" onclick="window.loadAnalysis('${r.id}')">
-                    <h4>${r.examTitle}</h4>
+                    <h4>${r.examTitle || 'Exam'}</h4>
                     <div style="display:flex; justify-content:space-between; margin-top:10px">
                         <span>Score: <b>${r.score}</b></span>
                         <small>${new Date(r.timestamp).toLocaleDateString()}</small>
@@ -198,6 +203,9 @@ window.initExam = async (tid) => {
         switchView('exam');
         document.body.classList.add('exam-mode');
         try { await document.documentElement.requestFullscreen(); } catch(e){}
+
+        // Set exam title in header
+        document.getElementById('exam-title').innerText = currentExam.title || 'Exam';
 
         renderPalette();
         lastTimeRef = Date.now();
@@ -265,21 +273,45 @@ window.loadQuestion = (idx) => {
     } else if (q.type === 'integer' || q.type === 'numerical') {
         inputHTML += `<input type="number" class="form-control" style="width:100%; padding:15px; font-size:1.2rem; border:2px solid #ccc; border-radius:6px;" placeholder="Answer" value="${localAns||''}" oninput="setTempInt(this.value)">`;
     } else if (q.type === 'matrix') {
-        let legend = '';
-        if (q.rows && q.columns) {
-            legend = `<div class="matrix-legend"><b>Rows:</b> ${q.rows.join(', ')}<br><b>Columns:</b> ${q.columns.join(', ')}</div>`;
+        // Defensive: Ensure rows and columns exist and are arrays
+        if (!Array.isArray(q.rows) || !Array.isArray(q.columns)) {
+            inputHTML += `<div style="color:red;">Matrix question data is missing rows or columns.</div>`;
+        } else {
+            // Always initialize localAns as an array of arrays for matrix questions
+            if (!Array.isArray(localAns) || localAns.length !== q.rows.length) {
+                localAns = [];
+                for (let i = 0; i < q.rows.length; i++) localAns[i] = [];
+                // Also update tempAnswer and userAnswers to keep state in sync
+                tempAnswer = localAns;
+                userAnswers[idx] = localAns;
+            }
+            let legend = `<div class="matrix-legend"><b>Rows:</b> ${q.rows.join(', ')}<br><b>Columns:</b> ${q.columns.join(', ')}</div>`;
+            inputHTML += legend + `<table class="matrix-table"><tr><th></th>`;
+            q.columns.forEach((col, j) => {
+                inputHTML += `<th>${col}</th>`;
+            });
+            inputHTML += `</tr>`;
+            q.rows.forEach((row, i) => {
+                inputHTML += `<tr><td>${row}</td>`;
+                q.columns.forEach((col, j) => {
+                    let checked = Array.isArray(localAns[i]) && localAns[i].includes(j) ? 'checked' : '';
+                    inputHTML += `<td><input type="checkbox" name="matrix-${i}" value="${j}" ${checked} onclick="setTempMatrix(${i},${j},this.checked)"></td>`;
+                });
+                inputHTML += `</tr>`;
+            });
+            inputHTML += `</table>`;
+
+            // Show matches as options (for reference)
+            if (Array.isArray(q.matches)) {
+                inputHTML += `<div class="matrix-matches" style="margin-top:10px;"><b>Correct Matches (for reference):</b><ul style="margin:0; padding-left:18px;">`;
+                q.matches.forEach(m => {
+                    const rowLabel = q.rows[m.row] || `Row ${m.row+1}`;
+                    const colLabels = (m.cols || []).map(idx => q.columns[idx]).join(', ');
+                    inputHTML += `<li>${rowLabel} → ${colLabels}</li>`;
+                });
+                inputHTML += `</ul></div>`;
+            }
         }
-        inputHTML += legend + `<div class="options-grid">`;
-        q.options.forEach((opt, i) => {
-            let sel = localAns == i ? 'selected' : '';
-            let chk = localAns == i ? 'checked' : '';
-            inputHTML += `
-                <label class="option-box ${sel}" id="opt-${i}" onclick="setTempOption(${i})">
-                    <input type="radio" name="ans" ${chk}> 
-                    <div>${opt}</div>
-                </label>`;
-        });
-        inputHTML += `</div>`;
     }
 
     area.innerHTML = `
@@ -308,6 +340,7 @@ let tempAnswer = null;
 // Option selection handlers (do not re-render immediately)
 window.setTempOption = (i) => {
     tempAnswer = i;
+    userAnswers[currentQIdx] = i;
     // Update UI selection
     document.querySelectorAll('.option-box').forEach(e => e.classList.remove('selected'));
     const opt = document.getElementById(`opt-${i}`);
@@ -320,27 +353,68 @@ window.setTempMultiOption = (i) => {
     if (idx === -1) tempAnswer.push(i);
     else tempAnswer.splice(idx, 1);
 
-    // Update UI selection
+    // Always update userAnswers immediately
+    userAnswers[currentQIdx] = [...tempAnswer];
+
+    // Update UI selection (both class and checkbox state)
     document.querySelectorAll('.option-box').forEach((e, j) => {
-        if (tempAnswer.includes(j)) e.classList.add('selected');
-        else e.classList.remove('selected');
+        const checkbox = e.querySelector('input[type="checkbox"]');
+        if (tempAnswer.includes(j)) {
+            e.classList.add('selected');
+            if (checkbox) checkbox.checked = true;
+        } else {
+            e.classList.remove('selected');
+            if (checkbox) checkbox.checked = false;
+        }
     });
 };
 
-window.setTempInt = (v) => { tempAnswer = v; };
+window.setTempInt = (v) => {
+    tempAnswer = v;
+    userAnswers[currentQIdx] = v;
+};
 
 // Save & Next
 window.saveNext = () => {
-    userAnswers[currentQIdx] = tempAnswer;
-    questionStatus[currentQIdx] = (tempAnswer !== undefined && tempAnswer !== null && ((Array.isArray(tempAnswer) && tempAnswer.length) || (!Array.isArray(tempAnswer) && tempAnswer !== ''))) ? 'answered' : 'not-answered';
+    // Save a deep copy to avoid mutation issues
+    if (Array.isArray(tempAnswer)) {
+        userAnswers[currentQIdx] = [...tempAnswer];
+    } else {
+        userAnswers[currentQIdx] = tempAnswer;
+    }
+
+    let q = flatQuestions[currentQIdx];
+    let isAnswered = false;
+    if (q.type === 'multi') {
+        isAnswered = Array.isArray(tempAnswer) && tempAnswer.length > 0;
+    } else if (q.type === 'numerical' || q.type === 'integer') {
+        isAnswered = tempAnswer !== undefined && tempAnswer !== null && tempAnswer !== '';
+    } else {
+        isAnswered = tempAnswer !== undefined && tempAnswer !== null && tempAnswer !== '';
+    }
+    questionStatus[currentQIdx] = isAnswered ? 'answered' : 'not-answered';
     updatePaletteNode(currentQIdx);
     if(currentQIdx < flatQuestions.length-1) loadQuestion(currentQIdx+1);
 };
 
 // Mark Review
 window.markRev = () => {
-    userAnswers[currentQIdx] = tempAnswer;
-    questionStatus[currentQIdx] = (tempAnswer !== undefined && tempAnswer !== null && ((Array.isArray(tempAnswer) && tempAnswer.length) || (!Array.isArray(tempAnswer) && tempAnswer !== ''))) ? 'marked-answered' : 'marked';
+    if (Array.isArray(tempAnswer)) {
+        userAnswers[currentQIdx] = [...tempAnswer];
+    } else {
+        userAnswers[currentQIdx] = tempAnswer;
+    }
+
+    let q = flatQuestions[currentQIdx];
+    let isAnswered = false;
+    if (q.type === 'multi') {
+        isAnswered = Array.isArray(tempAnswer) && tempAnswer.length > 0;
+    } else if (q.type === 'numerical' || q.type === 'integer') {
+        isAnswered = tempAnswer !== undefined && tempAnswer !== null && tempAnswer !== '';
+    } else {
+        isAnswered = tempAnswer !== undefined && tempAnswer !== null && tempAnswer !== '';
+    }
+    questionStatus[currentQIdx] = isAnswered ? 'marked-answered' : 'marked';
     updatePaletteNode(currentQIdx);
     if(currentQIdx < flatQuestions.length-1) loadQuestion(currentQIdx+1);
 };
@@ -485,11 +559,29 @@ window.submitExam = async () => {
         let marks = 0;
         let isCorrect = false;
 
-        // Scoring logic (simple, you may want to expand for multi/passage)
+        // Scoring logic with JEE Advanced style partial marking for multi-correct
         if (uAns !== null) {
             if (q.type === 'multi' && Array.isArray(uAns) && Array.isArray(q.answer)) {
-                isCorrect = (uAns.length === q.answer.length && uAns.every(v => q.answer.includes(v)));
-                marks = isCorrect ? parseInt(q.marks || 4) : -parseInt(q.negativeMarks || 1);
+                // Check if all selected answers are correct (no wrong option selected)
+                const allCorrect = uAns.every(v => q.answer.includes(v));
+                const allAnswersSelected = uAns.length === q.answer.length && allCorrect;
+                
+                if (allAnswersSelected) {
+                    // Full marks if all correct answers selected
+                    marks = parseInt(q.marks || 4);
+                    isCorrect = true;
+                } else if (allCorrect && uAns.length > 0) {
+                    // Partial marks: only correct options selected, but not all
+                    // JEE Advanced style: proportional marks based on correct selections
+                    const correctCount = uAns.length;
+                    const totalCorrect = q.answer.length;
+                    marks = parseInt(q.marks || 4) * (correctCount / totalCorrect);
+                    isCorrect = false; // Partial credit, not fully correct
+                } else {
+                    // Wrong answer: at least one wrong option selected or all wrong
+                    marks = -parseInt(q.negativeMarks || 1);
+                    isCorrect = false;
+                }
             } else if (q.type === 'passage' && Array.isArray(q.questions)) {
                 // For passage, you may want to store sub-question results
                 // Here, just mark as attempted
@@ -515,6 +607,8 @@ window.submitExam = async () => {
     try {
         await addDoc(collection(db, "results"), {
             uid: currentUser.uid,
+            studentName: currentUser.displayName || 'Student',
+            email: currentUser.email || '',
             examTitle: currentExam.title,
             testId: currentExam.id,
             score,
@@ -656,30 +750,36 @@ function renderSolution(idx) {
         if (q.rows && q.columns) {
             legend = `<div class="matrix-legend"><b>Rows:</b> ${q.rows.join(', ')}<br><b>Columns:</b> ${q.columns.join(', ')}</div>`;
         }
-        optionsHTML = legend + `<div class="options-grid">`;
-        q.options.forEach((opt, i) => {
-            let borderStyle = '2px solid #ddd', bgStyle = '#fff';
-            if (i == (q.answer ?? q.correct)) { borderStyle = '2px solid var(--success)'; bgStyle = '#e6fffa'; }
-            else if (detail.userAns == i && !detail.isCorrect) { borderStyle = '2px solid var(--danger)'; bgStyle = '#fff5f5'; }
-            optionsHTML += `
-                <div class="option-box" style="border:${borderStyle}; background:${bgStyle}; cursor:default">
-                    <div>${opt}</div>
-                    ${i == (q.answer ?? q.correct) ? '<i class="fa fa-check" style="color:green; margin-left:auto"></i>' : ''}
-                    ${(detail.userAns == i && !detail.isCorrect) ? '<i class="fa fa-times" style="color:red; margin-left:auto"></i>' : ''}
-                </div>`;
+        optionsHTML = legend + `<table class="matrix-table"><tr><th></th>`;
+        q.columns.forEach((col, j) => {
+            optionsHTML += `<th>${col}</th>`;
         });
-        optionsHTML += `</div>`;
-        userAnsHTML = (detail.userAns !== null) ? `<div><b>Your Answer:</b> ${q.options[detail.userAns]}</div>` : '';
-        correctAnsHTML = `<div><b>Correct Answer:</b> ${q.options[q.answer ?? q.correct]}</div>`;
-    } else {
-        // Fallback for other types
-        userAnsHTML = (detail.userAns !== null) ? `<div><b>Your Answer:</b> ${detail.userAns}</div>` : '';
-        correctAnsHTML = `<div><b>Correct Answer:</b> ${q.answer ?? q.correct}</div>`;
+        optionsHTML += `</tr>`;
+        // Prepare correct and user answers
+        let correct = (q.matches || []);
+        let user = Array.isArray(detail.userAns) ? detail.userAns : [];
+        q.rows.forEach((row, i) => {
+            optionsHTML += `<tr><td>${row}</td>`;
+            q.columns.forEach((col, j) => {
+                let isCorrect = (correct.find(m => m.row === i) || {cols:[]}).cols.includes(j);
+                let isUser = Array.isArray(user[i]) && user[i].includes(j);
+                let cell = '';
+                if (isCorrect && isUser) cell = '<span style="color:green">&#10004;</span>'; // correct tick
+                else if (isCorrect) cell = '<span style="color:green">&#10003;</span>'; // correct only
+                else if (isUser) cell = '<span style="color:red">&#10008;</span>'; // user wrong
+                optionsHTML += `<td style="text-align:center">${cell}</td>`;
+            });
+            optionsHTML += `</tr>`;
+        });
+        optionsHTML += `</table>`;
+        // Show user and correct answers as text
+        userAnsHTML = `<div><b>Your Matches:</b> ${JSON.stringify(user)}</div>`;
+        correctAnsHTML = `<div><b>Correct Matches:</b> ${JSON.stringify(correct)}</div>`;
     }
 
     document.getElementById('sol-content').innerHTML = `
         <div class="sol-status ${statusClass}">${statusText}</div>
-        <div class="q-meta"><span>Q${idx+1}</span><span>Time Spent: ${Math.round(detail.time)}s</span></div>
+        <div class="q-meta"><span>Q${idx+1}</span><span>Time Spent: ${Math.round(detail.time)}s</span><span style="font-weight:bold; color:${detail.marks >= 0 ? 'var(--success)' : 'var(--danger)'}">Marks: ${detail.marks > 0 ? '+' : ''}${detail.marks}</span></div>
         ${q.img ? `<img src="${q.img}" class="q-img">` : ''}
         ${passageHTML}
         <div class="q-text">${questionText}</div>
@@ -791,4 +891,15 @@ function flattenAnalysisQuestions(questions) {
 window.onExamFetch = (exam) => {
     // After currentExam = docSnap.data();
     flattenQuestions(currentExam.questions);
+}
+
+// Matrix answer handling
+function setTempMatrix(i, j, checked) {
+    if (!Array.isArray(tempAnswer)) tempAnswer = [];
+    if (!Array.isArray(tempAnswer[i])) tempAnswer[i] = [];
+    if (checked) {
+        if (!tempAnswer[i].includes(j)) tempAnswer[i].push(j);
+    } else {
+        tempAnswer[i] = tempAnswer[i].filter(x => x !== j);
+    }
 }
