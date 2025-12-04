@@ -83,29 +83,6 @@ async function loadDashboard() {
             attemptsMap[data.testId].push(data);
         });
 
-        // 3. Calculate Dashboard Stats
-        const totalExams = testsSnap.size;
-        const completedExams = Object.keys(attemptsMap).length;
-        const upcomingExams = totalExams - completedExams;
-        
-        // Calculate average score from all attempts
-        let totalScore = 0;
-        let scoreCount = 0;
-        resultsSnap.forEach(doc => {
-            const data = doc.data();
-            if (data.score !== undefined && data.total) {
-                totalScore += (data.score / data.total) * 100;
-                scoreCount++;
-            }
-        });
-        const avgScore = scoreCount > 0 ? Math.round(totalScore / scoreCount) : 0;
-
-        // Update stat cards
-        document.getElementById('total-exams-stat').textContent = totalExams;
-        document.getElementById('upcoming-exams-stat').textContent = upcomingExams;
-        document.getElementById('completed-exams-stat').textContent = completedExams;
-        document.getElementById('avg-score-stat').textContent = avgScore + '%';
-
         // 3. Render Exam List
         list.innerHTML = '';
         testsSnap.forEach(d => {
@@ -236,10 +213,6 @@ async function loadDashboard() {
 let studentFullName = '';
 let studentPhone = '';
 let studentEmail = '';
-let studentHometown = '';
-let studentHostel = '';
-let studentRoom = '';
-let studentRank = '';
 let studentBranch = '';
 let pendingExamId = null;
 
@@ -252,10 +225,6 @@ window.startExam = function(examId) {
     document.getElementById('student-full-name').value = studentFullName || currentUser.displayName || '';
     document.getElementById('student-phone').value = studentPhone || '';
     document.getElementById('student-email').value = studentEmail || currentUser.email || '';
-    document.getElementById('student-hometown').value = studentHometown || '';
-    document.getElementById('student-hostel').value = studentHostel || '';
-    document.getElementById('student-room').value = studentRoom || '';
-    document.getElementById('student-rank').value = studentRank || '';
     document.getElementById('student-branch').value = studentBranch || '';
     
     modal.classList.remove('hidden');
@@ -289,16 +258,11 @@ document.getElementById('student-details-form').addEventListener('submit', async
     studentFullName = document.getElementById('student-full-name').value.trim();
     studentPhone = document.getElementById('student-phone').value.trim();
     studentEmail = document.getElementById('student-email').value.trim();
-    studentHometown = document.getElementById('student-hometown').value.trim();
-    studentHostel = document.getElementById('student-hostel').value.trim();
-    studentRoom = document.getElementById('student-room').value.trim();
-    studentRank = document.getElementById('student-rank').value.trim();
     const branchSelect = document.getElementById('student-branch').value;
     const branchOther = document.getElementById('student-branch-other').value.trim();
     
     // Validate required fields
-    if (!studentFullName || !studentPhone || !studentEmail || !studentHometown || 
-        !studentHostel || !studentRoom || !studentRank || !branchSelect) {
+    if (!studentFullName || !studentPhone || !studentEmail || !branchSelect) {
         alert('Please fill in all required fields.');
         return;
     }
@@ -326,7 +290,7 @@ document.getElementById('student-details-form').addEventListener('submit', async
         studentBranch = branchSelect;
     }
     
-    console.log('Student details validated:', {studentFullName, studentPhone, studentEmail, studentHometown, studentHostel, studentRoom, studentRank, studentBranch});
+    console.log('Student details validated:', {studentFullName, studentPhone, studentEmail, studentBranch});
     console.log('Pending exam ID:', pendingExamId);
     
     // Hide modal first
@@ -1034,10 +998,6 @@ window.submitExam = async () => {
             studentName: studentFullName || currentUser.displayName || 'Student',
             studentPhone: studentPhone || '',
             studentEmail: studentEmail || currentUser.email || '',
-            studentHometown: studentHometown || '',
-            studentHostel: studentHostel || '',
-            studentRoom: studentRoom || '',
-            studentRank: studentRank || '',
             studentBranch: studentBranch || '',
             email: currentUser.email || '',
             examTitle: currentExam.title,
@@ -1903,13 +1863,8 @@ window.downloadSubmittedExamPDF = async function(resultId) {
         pdfDoc.text(`Name: ${resultData.studentName || 'N/A'}`, margin, yPos);
         yPos += 6;
         pdfDoc.text(`WhatsApp: ${resultData.studentPhone || 'N/A'}`, margin, yPos);
-        pdfDoc.text(`Email: ${resultData.studentEmail || resultData.email || 'N/A'}`, margin + 80, yPos);
         yPos += 6;
-        pdfDoc.text(`Hometown: ${resultData.studentHometown || 'N/A'}`, margin, yPos);
-        pdfDoc.text(`Hostel: ${resultData.studentHostel || 'N/A'}`, margin + 80, yPos);
-        yPos += 6;
-        pdfDoc.text(`Room: ${resultData.studentRoom || 'N/A'}`, margin, yPos);
-        pdfDoc.text(`JEE Rank: ${resultData.studentRank || 'N/A'}`, margin + 80, yPos);
+        pdfDoc.text(`Email: ${resultData.studentEmail || resultData.email || 'N/A'}`, margin, yPos);
         yPos += 6;
         pdfDoc.text(`Branch: ${resultData.studentBranch || 'N/A'}`, margin, yPos);
         yPos += 10;
