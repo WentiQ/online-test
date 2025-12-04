@@ -83,6 +83,29 @@ async function loadDashboard() {
             attemptsMap[data.testId].push(data);
         });
 
+        // 3. Calculate Dashboard Stats
+        const totalExams = testsSnap.size;
+        const completedExams = Object.keys(attemptsMap).length;
+        const upcomingExams = totalExams - completedExams;
+        
+        // Calculate average score from all attempts
+        let totalScore = 0;
+        let scoreCount = 0;
+        resultsSnap.forEach(doc => {
+            const data = doc.data();
+            if (data.score !== undefined && data.total) {
+                totalScore += (data.score / data.total) * 100;
+                scoreCount++;
+            }
+        });
+        const avgScore = scoreCount > 0 ? Math.round(totalScore / scoreCount) : 0;
+
+        // Update stat cards
+        document.getElementById('total-exams-stat').textContent = totalExams;
+        document.getElementById('upcoming-exams-stat').textContent = upcomingExams;
+        document.getElementById('completed-exams-stat').textContent = completedExams;
+        document.getElementById('avg-score-stat').textContent = avgScore + '%';
+
         // 3. Render Exam List
         list.innerHTML = '';
         testsSnap.forEach(d => {

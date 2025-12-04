@@ -16,35 +16,259 @@
 <body oncontextmenu="return false;">
 
     <div id="auth-view" class="login-wrapper">
-        <div class="dash-card" style="text-align:center; max-width:400px;">
-            <h2 style="color:var(--primary); margin-bottom:10px;">Enduro Student Portal</h2>
-            <p style="color:var(--gray); margin-bottom:20px;">Secure Login for Students</p>
-            <button id="login-btn" class="btn btn-outline" style="width:100%">
-                <i class="fab fa-google" style="color:#DB4437"></i> Sign in with Google
-            </button>
+        <div class="login-container">
+            <div class="login-left">
+                <div class="brand-section">
+                    <div class="logo-container">
+                        <div class="logo-circle">
+                            <i class="fas fa-graduation-cap"></i>
+                        </div>
+                    </div>
+                    <h1 class="brand-title">Enduro Student Portal</h1>
+                    <p class="brand-subtitle">Excellence Through Assessment</p>
+                </div>
+                
+                <div class="features-list">
+                    <div class="feature-item">
+                        <div class="feature-icon">
+                            <i class="fas fa-shield-alt"></i>
+                        </div>
+                        <div class="feature-text">
+                            <h4>Secure & Reliable</h4>
+                            <p>Bank-grade security for your exams</p>
+                        </div>
+                    </div>
+                    <div class="feature-item">
+                        <div class="feature-icon">
+                            <i class="fas fa-chart-line"></i>
+                        </div>
+                        <div class="feature-text">
+                            <h4>Detailed Analytics</h4>
+                            <p>Track your performance in real-time</p>
+                        </div>
+                    </div>
+                    <div class="feature-item">
+                        <div class="feature-icon">
+                            <i class="fas fa-clock"></i>
+                        </div>
+                        <div class="feature-text">
+                            <h4>Time Management</h4>
+                            <p>Smart timers and progress tracking</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="login-decoration">
+                    <div class="floating-shape shape-1"></div>
+                    <div class="floating-shape shape-2"></div>
+                    <div class="floating-shape shape-3"></div>
+                </div>
+            </div>
+            
+            <div class="login-right">
+                <div class="login-card">
+                    <div class="login-header">
+                        <h2>Welcome Back</h2>
+                        <p>Sign in to access your exam dashboard</p>
+                    </div>
+                    
+                    <div class="login-form">
+                        <div class="auth-benefits">
+                            <div class="benefit-item">
+                                <i class="fas fa-check-circle"></i>
+                                <span>Access all your exams</span>
+                            </div>
+                            <div class="benefit-item">
+                                <i class="fas fa-check-circle"></i>
+                                <span>View detailed analytics</span>
+                            </div>
+                            <div class="benefit-item">
+                                <i class="fas fa-check-circle"></i>
+                                <span>Track your progress</span>
+                            </div>
+                        </div>
+                        
+                        <button id="login-btn" class="google-signin-btn">
+                            <div class="google-icon-wrapper">
+                                <svg class="google-icon" viewBox="0 0 48 48">
+                                    <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"></path>
+                                    <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"></path>
+                                    <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"></path>
+                                    <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"></path>
+                                    <path fill="none" d="M0 0h48v48H0z"></path>
+                                </svg>
+                            </div>
+                            <span class="button-text">Continue with Google</span>
+                        </button>
+                        
+                        <div class="divider">
+                            <span>Secure Authentication</span>
+                        </div>
+                        
+                        <div class="security-badges">
+                            <div class="badge">
+                                <i class="fas fa-lock"></i>
+                                <span>SSL Encrypted</span>
+                            </div>
+                            <div class="badge">
+                                <i class="fas fa-user-shield"></i>
+                                <span>Privacy Protected</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="login-footer">
+                        <p>By signing in, you agree to our <a href="#">Terms of Service</a> and <a href="#">Privacy Policy</a></p>
+                    </div>
+                </div>
+                
+                <div class="quick-stats">
+                    <div class="stat-item">
+                        <div class="stat-number">10K+</div>
+                        <div class="stat-label">Active Students</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-number">500+</div>
+                        <div class="stat-label">Exams Conducted</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-number">98%</div>
+                        <div class="stat-label">Satisfaction Rate</div>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 
-    <div id="dashboard-view" class="container hidden">
-        <header class="dashboard-header">
-            <div class="user-welcome">
-                <h2>Welcome, <span id="user-name-display">Student</span></h2>
-                <p>Your Exam Dashboard</p>
+    <div id="dashboard-view" class="dashboard-container hidden">
+        <div class="dashboard-sidebar">
+            <div class="sidebar-header">
+                <div class="sidebar-logo">
+                    <i class="fas fa-graduation-cap"></i>
+                </div>
+                <h3>Enduro Portal</h3>
             </div>
-            <button id="logout-btn" class="btn btn-outline">
-                <i class="fa fa-sign-out-alt"></i> Logout
-            </button>
-        </header>
+            
+            <nav class="sidebar-nav">
+                <a href="#" class="nav-item active">
+                    <i class="fas fa-home"></i>
+                    <span>Dashboard</span>
+                </a>
+                <a href="#" class="nav-item">
+                    <i class="fas fa-file-alt"></i>
+                    <span>My Exams</span>
+                </a>
+                <a href="#" class="nav-item">
+                    <i class="fas fa-chart-bar"></i>
+                    <span>Analytics</span>
+                </a>
+                <a href="#" class="nav-item">
+                    <i class="fas fa-history"></i>
+                    <span>History</span>
+                </a>
+                <a href="#" class="nav-item">
+                    <i class="fas fa-cog"></i>
+                    <span>Settings</span>
+                </a>
+            </nav>
+            
+            <div class="sidebar-footer">
+                <button id="logout-btn" class="logout-btn">
+                    <i class="fa fa-sign-out-alt"></i>
+                    <span>Logout</span>
+                </button>
+            </div>
+        </div>
+        
+        <div class="dashboard-main">
+            <header class="modern-dashboard-header">
+                <div class="header-content">
+                    <div class="welcome-section">
+                        <h1>Welcome back, <span id="user-name-display" class="user-name">Student</span> 👋</h1>
+                        <p class="subtitle">Here's what's happening with your exams today</p>
+                    </div>
+                    <div class="header-actions">
+                        <button class="icon-btn notification-btn">
+                            <i class="fas fa-bell"></i>
+                            <span class="badge-dot"></span>
+                        </button>
+                        <div class="user-avatar">
+                            <i class="fas fa-user"></i>
+                        </div>
+                    </div>
+                </div>
+            </header>
 
-        <section style="margin-bottom: 40px;">
-            <h4 style="color:var(--gray); text-transform:uppercase; margin-bottom:15px; border-left:4px solid var(--primary); padding-left:10px;">Available Exams</h4>
-            <div id="exam-list" class="grid"></div>
-        </section>
+            <div class="dashboard-stats">
+                <div class="stat-card">
+                    <div class="stat-icon" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
+                        <i class="fas fa-clipboard-list"></i>
+                    </div>
+                    <div class="stat-details">
+                        <p class="stat-label">Total Exams</p>
+                        <h3 class="stat-value" id="total-exams-stat">0</h3>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);">
+                        <i class="fas fa-clock"></i>
+                    </div>
+                    <div class="stat-details">
+                        <p class="stat-label">Upcoming</p>
+                        <h3 class="stat-value" id="upcoming-exams-stat">0</h3>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon" style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);">
+                        <i class="fas fa-check-circle"></i>
+                    </div>
+                    <div class="stat-details">
+                        <p class="stat-label">Completed</p>
+                        <h3 class="stat-value" id="completed-exams-stat">0</h3>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon" style="background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);">
+                        <i class="fas fa-trophy"></i>
+                    </div>
+                    <div class="stat-details">
+                        <p class="stat-label">Avg Score</p>
+                        <h3 class="stat-value" id="avg-score-stat">0%</h3>
+                    </div>
+                </div>
+            </div>
 
-        <section>
-            <h4 style="color:var(--gray); text-transform:uppercase; margin-bottom:15px; border-left:4px solid var(--success); padding-left:10px;">Performance History</h4>
-            <div id="history-list" class="grid"></div>
-        </section>
+            <section class="dashboard-section">
+                <div class="section-header">
+                    <div>
+                        <h2 class="section-title">
+                            <i class="fas fa-file-alt"></i>
+                            Available Exams
+                        </h2>
+                        <p class="section-subtitle">Click on any exam to start</p>
+                    </div>
+                    <div class="section-actions">
+                        <button class="filter-btn active">All</button>
+                        <button class="filter-btn">Active</button>
+                        <button class="filter-btn">Upcoming</button>
+                    </div>
+                </div>
+                <div id="exam-list" class="modern-grid"></div>
+            </section>
+
+            <section class="dashboard-section">
+                <div class="section-header">
+                    <div>
+                        <h2 class="section-title">
+                            <i class="fas fa-history"></i>
+                            Performance History
+                        </h2>
+                        <p class="section-subtitle">Track your past exam results</p>
+                    </div>
+                </div>
+                <div id="history-list" class="modern-grid"></div>
+            </section>
+        </div>
     </div>
 
     <div id="exam-view" class="hidden">
