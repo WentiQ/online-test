@@ -54,6 +54,12 @@ onAuthStateChanged(auth, (user) => {
 document.getElementById('login-btn').onclick = () => signInWithPopup(auth, provider);
 document.getElementById('logout-btn').onclick = () => signOut(auth).then(() => location.reload());
 
+// Toggle sidebar in exam view
+document.getElementById('toggle-sidebar').onclick = () => {
+    const sidebar = document.getElementById('palette');
+    sidebar.classList.toggle('collapsed');
+};
+
 // --- DASHBOARD ---
 async function loadDashboard() {
     const list = document.getElementById('exam-list');
