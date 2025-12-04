@@ -1124,3 +1124,22 @@ img.q-img { max-width: 100%; height: auto; border-radius: 4px; border: 1px solid
     max-height: 90vh;
     overflow-y: auto;
 }
+
+/* Star Rating Styles */
+.star {
+    color: #ddd;
+    transition: color 0.2s, transform 0.2s;
+    display: inline-block;
+}
+
+.star:hover {
+    transform: scale(1.2);
+}
+
+.star.selected {
+    color: #ffc107;
+}
+
+.star.hovered {
+    color: #ffd54f;
+}

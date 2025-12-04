@@ -926,6 +926,9 @@ function startTimer(sec) {
     }, 1000);
 }
 
+// Store exam data temporarily for feedback submission
+let tempExamData = null;
+
 window.submitExam = async () => {
     if(!confirm("Submit Exam?")) return;
     document.getElementById('submit-btn').innerText = "Processing...";
@@ -992,26 +995,114 @@ window.submitExam = async () => {
         });
     });
 
+    // Store exam data for feedback submission
+    tempExamData = {
+        uid: currentUser.uid,
+        studentName: studentFullName || currentUser.displayName || 'Student',
+        studentPhone: studentPhone || '',
+        studentEmail: studentEmail || currentUser.email || '',
+        studentBranch: studentBranch || '',
+        email: currentUser.email || '',
+        examTitle: currentExam.title,
+        testId: currentExam.id,
+        score,
+        details,
+        totalTimeSpent: Object.values(timeLog).reduce((a, b) => a + b, 0),
+        timestamp: new Date().toISOString()
+    };
+
+    // Hide exam view and show feedback modal
+    document.getElementById('exam-view').classList.add('hidden');
+    document.getElementById('feedback-modal').classList.remove('hidden');
+    document.getElementById('submit-btn').innerText = "Submit";
+};
+document.getElementById('submit-btn').onclick = window.submitExam;
+
+// --- FEEDBACK FUNCTIONALITY ---
+let selectedRating = 0;
+
+// Star rating interaction
+const stars = document.querySelectorAll('.star');
+stars.forEach(star => {
+    star.addEventListener('click', function() {
+        selectedRating = parseInt(this.dataset.rating);
+        document.getElementById('feedback-rating').value = selectedRating;
+        document.getElementById('rating-error').style.display = 'none';
+        updateStars(selectedRating);
+    });
+    
+    star.addEventListener('mouseenter', function() {
+        const hoverRating = parseInt(this.dataset.rating);
+        updateStars(hoverRating, true);
+    });
+    
+    star.addEventListener('mouseleave', function() {
+        updateStars(selectedRating);
+    });
+});
+
+function updateStars(rating, isHover = false) {
+    stars.forEach((star, index) => {
+        const starRating = index + 1;
+        star.classList.remove('selected', 'hovered');
+        if (starRating <= rating) {
+            star.classList.add(isHover ? 'hovered' : 'selected');
+            star.textContent = '★';
+        } else {
+            star.textContent = '☆';
+        }
+    });
+}
+
+// Feedback form submission
+document.getElementById('feedback-form').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    
+    const rating = parseInt(document.getElementById('feedback-rating').value);
+    const difficulty = document.getElementById('feedback-difficulty').value;
+    const comments = document.getElementById('feedback-comments').value.trim();
+    
+    // Validate rating
+    if (!rating || rating < 1 || rating > 5) {
+        document.getElementById('rating-error').style.display = 'block';
+        return;
+    }
+    
+    // Validate difficulty
+    if (!difficulty) {
+        alert('Please select the question difficulty level.');
+        return;
+    }
+    
+    // Disable submit button
+    const submitBtn = this.querySelector('button[type="submit"]');
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Submitting...';
+    
     try {
-        const resultDoc = await addDoc(collection(db, "results"), {
-            uid: currentUser.uid,
-            studentName: studentFullName || currentUser.displayName || 'Student',
-            studentPhone: studentPhone || '',
-            studentEmail: studentEmail || currentUser.email || '',
-            studentBranch: studentBranch || '',
-            email: currentUser.email || '',
-            examTitle: currentExam.title,
-            testId: currentExam.id,
-            score,
-            details,
-            totalTimeSpent: Object.values(timeLog).reduce((a, b) => a + b, 0),
-            timestamp: new Date().toISOString()
-        });
+        // Add feedback data to exam result
+        tempExamData.feedback = {
+            rating,
+            difficulty,
+            comments,
+            submittedAt: new Date().toISOString()
+        };
+        
+        // Save to Firestore
+        const resultDoc = await addDoc(collection(db, "results"), tempExamData);
         
         if (liveDocId) updateDoc(doc(db, "live_status", liveDocId), { status: "Completed" });
         
         // Store result ID for PDF generation
         window.lastSubmittedResultId = resultDoc.id;
+        
+        // Hide feedback modal
+        document.getElementById('feedback-modal').classList.add('hidden');
+        
+        // Reset form
+        document.getElementById('feedback-form').reset();
+        selectedRating = 0;
+        updateStars(0);
         
         // Show popup to download PDF
         const downloadNow = confirm("✅ Exam submitted successfully!\n\nYour responses have been recorded.\n\nWould you like to download your exam response PDF now?");
@@ -1029,11 +1120,11 @@ window.submitExam = async () => {
         
     } catch(e) {
         console.error(e);
-        alert("Error: " + e.message);
-        document.getElementById('submit-btn').innerText = "Submit";
+        alert("Error submitting feedback: " + e.message);
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = '<i class="fas fa-paper-plane"></i> Submit Feedback & View Results';
     }
-};
-document.getElementById('submit-btn').onclick = window.submitExam;
+});
 
 // --- ANALYSIS FUNCTIONS ---
 window.loadAnalysis = async (resultId) => {

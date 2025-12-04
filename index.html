@@ -538,6 +538,68 @@
         </div>
     </div>
 
+    <!-- Feedback Modal -->
+    <div id="feedback-modal" class="modal hidden">
+        <div class="modal-content" style="max-width: 600px; max-height: 90vh; overflow-y: auto;">
+            <h3 style="margin-bottom: 20px; color: var(--primary);">
+                <i class="fas fa-comment-dots"></i> Exam Feedback
+            </h3>
+            <p style="color: var(--gray); margin-bottom: 25px;">Your feedback helps us improve the exam experience. Please share your thoughts!</p>
+            
+            <form id="feedback-form">
+                <div style="margin-bottom: 25px;">
+                    <label style="display: block; margin-bottom: 10px; font-weight: 600; font-size: 1rem;">
+                        How would you rate this exam? *
+                    </label>
+                    <div id="rating-stars" style="display: flex; gap: 10px; font-size: 2.5rem; cursor: pointer; justify-content: center; padding: 15px 0;">
+                        <span class="star" data-rating="1">☆</span>
+                        <span class="star" data-rating="2">☆</span>
+                        <span class="star" data-rating="3">☆</span>
+                        <span class="star" data-rating="4">☆</span>
+                        <span class="star" data-rating="5">☆</span>
+                    </div>
+                    <input type="hidden" id="feedback-rating" required>
+                    <div id="rating-error" style="color: red; font-size: 0.9rem; text-align: center; display: none; margin-top: 5px;">
+                        Please select a rating
+                    </div>
+                </div>
+                
+                <div style="margin-bottom: 25px;">
+                    <label style="display: block; margin-bottom: 10px; font-weight: 600; font-size: 1rem;">
+                        Question Difficulty Level *
+                    </label>
+                    <select id="feedback-difficulty" required style="width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
+                        <option value="">-- Select Difficulty --</option>
+                        <option value="Too Easy">Too Easy</option>
+                        <option value="Easy">Easy</option>
+                        <option value="Just Right">Just Right</option>
+                        <option value="Difficult">Difficult</option>
+                        <option value="Too Difficult">Too Difficult</option>
+                    </select>
+                </div>
+                
+                <div style="margin-bottom: 25px;">
+                    <label style="display: block; margin-bottom: 10px; font-weight: 600; font-size: 1rem;">
+                        Additional Comments (Optional)
+                    </label>
+                    <textarea id="feedback-comments" rows="5" placeholder="Share your experience, suggestions, or any issues you faced..." style="width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem; resize: vertical; font-family: inherit;"></textarea>
+                </div>
+                
+                <div style="background: #fff3cd; padding: 15px; border-radius: 8px; border-left: 4px solid #ffc107; margin-bottom: 25px;">
+                    <p style="margin: 0; font-size: 0.9rem; color: #856404;">
+                        <i class="fas fa-info-circle"></i> <strong>Note:</strong> Your feedback is valuable and helps us improve future exams. Please be honest and constructive.
+                    </p>
+                </div>
+                
+                <div style="display: flex; gap: 10px; justify-content: flex-end;">
+                    <button type="submit" class="btn btn-primary" style="font-size: 1.1rem; padding: 12px 30px;">
+                        <i class="fas fa-paper-plane"></i> Submit Feedback & View Results
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <script type="module" src="student.js"></script>
 </body>
 </html>
