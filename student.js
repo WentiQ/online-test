@@ -30,6 +30,9 @@ const views = {
     auth: document.getElementById('auth-view'),
     dash: document.getElementById('dashboard-view'),
     exam: document.getElementById('exam-view'),
+    'introduction-view': document.getElementById('introduction-view'),
+    'main-instructions-view': document.getElementById('main-instructions-view'),
+    'result-view': document.getElementById('result-view'),
     anOverview: document.getElementById('analysis-overview'),
     anDetail: document.getElementById('analysis-detail')
 };
@@ -103,24 +106,31 @@ async function loadDashboard() {
             if (attemptCount === 0) {
                 // Not Attempted
                 statusBadge = `<span style="color:var(--gray); font-size:0.8rem">● New</span>`;
-                footerHTML = `<button class="btn btn-primary" style="width:100%" onclick="window.initExam('${d.id}')">Start Exam</button>`;
+                footerHTML = `<button class="btn btn-primary" style="width:100%" onclick="window.startExam('${d.id}')">Start Exam</button>`;
             } else {
                 // Attempted at least once
                 const isLimitReached = attemptCount >= maxAttempts;
                 
-                // Button 1: Analysis (Always available if attempted)
-                const analysisBtn = `<button class="btn btn-success" style="flex:1" onclick="window.loadAnalysis('${latestResult.id}')">Analysis</button>`;
+                // Button 1: Analysis or Result based on exam type
+                let viewBtn = '';
+                if (t.resultType === 'result') {
+                    // Result type - show Result button
+                    viewBtn = `<button class="btn btn-success" style="flex:1" onclick="window.loadResult('${latestResult.id}')">View Result</button>`;
+                } else {
+                    // Analysis type (default)
+                    viewBtn = `<button class="btn btn-success" style="flex:1" onclick="window.loadAnalysis('${latestResult.id}')">Analysis</button>`;
+                }
                 
                 // Button 2: Retake (If limit not reached)
                 let retakeBtn = '';
                 if (!isLimitReached) {
-                    retakeBtn = `<button class="btn btn-outline" style="flex:1" onclick="window.initExam('${d.id}')">Retake</button>`;
+                    retakeBtn = `<button class="btn btn-outline" style="flex:1" onclick="window.startExam('${d.id}')">Retake</button>`;
                 } else {
                     retakeBtn = `<button class="btn btn-outline" style="flex:1" disabled title="Max attempts reached">Limit Reached</button>`;
                 }
 
                 statusBadge = `<span style="color:var(--success); font-weight:bold; font-size:0.8rem">● Attempt ${attemptCount}/${maxAttempts}</span>`;
-                footerHTML = `<div style="display:flex; gap:10px; width:100%">${analysisBtn}${retakeBtn}</div>`;
+                footerHTML = `<div style="display:flex; gap:10px; width:100%">${viewBtn}${retakeBtn}</div>`;
             }
 
             // Assuming 'exam' is your exam object from Firestore
@@ -153,18 +163,328 @@ async function loadDashboard() {
         allResults.sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp));
 
         allResults.forEach(r => {
-            hist.innerHTML += `
-                <div class="dash-card" style="border-left:4px solid var(--primary); cursor:pointer" onclick="window.loadAnalysis('${r.id}')">
-                    <h4>${r.examTitle || 'Exam'}</h4>
-                    <div style="display:flex; justify-content:space-between; margin-top:10px">
-                        <span>Score: <b>${r.score}</b></span>
-                        <small>${new Date(r.timestamp).toLocaleDateString()}</small>
-                    </div>
-                </div>`;
+            // Get the exam data to check result type
+            const examData = [...testsSnap.docs].find(d => d.id === r.testId);
+            const isResultType = examData && examData.data().resultType === 'result';
+            
+            if (isResultType) {
+                // For result-type exams, show qualification status instead of score
+                let statusIcon = '⏳';
+                let statusText = 'Result Pending';
+                let statusColor = '#ffc107';
+                
+                if (r.resultReleased) {
+                    if (r.qualified === true) {
+                        statusIcon = '✅';
+                        statusText = 'Qualified';
+                        statusColor = '#28a745';
+                    } else if (r.qualified === false) {
+                        statusIcon = '❌';
+                        statusText = 'Not Qualified';
+                        statusColor = '#dc3545';
+                    }
+                }
+                
+                hist.innerHTML += `
+                    <div class="dash-card" style="border-left:4px solid ${statusColor}; cursor:pointer" onclick="window.loadResult('${r.id}')">
+                        <h4>${r.examTitle || 'Exam'}</h4>
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-top:10px">
+                            <span style="color:${statusColor}; font-weight:bold;">${statusIcon} ${statusText}</span>
+                            <small>${new Date(r.timestamp).toLocaleDateString()}</small>
+                        </div>
+                    </div>`;
+            } else {
+                // For analysis-type exams, show score as before
+                hist.innerHTML += `
+                    <div class="dash-card" style="border-left:4px solid var(--primary); cursor:pointer" onclick="window.loadAnalysis('${r.id}')">
+                        <h4>${r.examTitle || 'Exam'}</h4>
+                        <div style="display:flex; justify-content:space-between; margin-top:10px">
+                            <span>Score: <b>${r.score}</b></span>
+                            <small>${new Date(r.timestamp).toLocaleDateString()}</small>
+                        </div>
+                    </div>`;
+            }
         });
 
     } catch (e) { console.error(e); }
 }
+
+// --- Student Details State ---
+let studentFullName = '';
+let studentPhone = '';
+let studentEmail = '';
+let studentHometown = '';
+let studentHostel = '';
+let studentRoom = '';
+let studentRank = '';
+let studentBranch = '';
+let pendingExamId = null;
+
+// --- Student Details Modal Functions ---
+window.startExam = function(examId) {
+    pendingExamId = examId;
+    const modal = document.getElementById('student-details-modal');
+    
+    // Pre-fill with previously entered details if available
+    document.getElementById('student-full-name').value = studentFullName || currentUser.displayName || '';
+    document.getElementById('student-phone').value = studentPhone || '';
+    document.getElementById('student-email').value = studentEmail || currentUser.email || '';
+    document.getElementById('student-hometown').value = studentHometown || '';
+    document.getElementById('student-hostel').value = studentHostel || '';
+    document.getElementById('student-room').value = studentRoom || '';
+    document.getElementById('student-rank').value = studentRank || '';
+    document.getElementById('student-branch').value = studentBranch || '';
+    
+    modal.classList.remove('hidden');
+    document.getElementById('student-full-name').focus();
+};
+
+window.cancelStudentDetails = function() {
+    document.getElementById('student-details-modal').classList.add('hidden');
+    pendingExamId = null;
+};
+
+// Show/hide other branch field
+document.getElementById('student-branch').addEventListener('change', function() {
+    const otherContainer = document.getElementById('other-branch-container');
+    const otherInput = document.getElementById('student-branch-other');
+    if (this.value === 'other') {
+        otherContainer.style.display = 'block';
+        otherInput.required = true;
+    } else {
+        otherContainer.style.display = 'none';
+        otherInput.required = false;
+        otherInput.value = '';
+    }
+});
+
+document.getElementById('student-details-form').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    console.log('Form submitted');
+    
+    // Get all field values
+    studentFullName = document.getElementById('student-full-name').value.trim();
+    studentPhone = document.getElementById('student-phone').value.trim();
+    studentEmail = document.getElementById('student-email').value.trim();
+    studentHometown = document.getElementById('student-hometown').value.trim();
+    studentHostel = document.getElementById('student-hostel').value.trim();
+    studentRoom = document.getElementById('student-room').value.trim();
+    studentRank = document.getElementById('student-rank').value.trim();
+    const branchSelect = document.getElementById('student-branch').value;
+    const branchOther = document.getElementById('student-branch-other').value.trim();
+    
+    // Validate required fields
+    if (!studentFullName || !studentPhone || !studentEmail || !studentHometown || 
+        !studentHostel || !studentRoom || !studentRank || !branchSelect) {
+        alert('Please fill in all required fields.');
+        return;
+    }
+    
+    // Validate phone number
+    if (studentPhone.length !== 10 || !/^\d+$/.test(studentPhone)) {
+        alert('Please enter a valid 10-digit WhatsApp number.');
+        return;
+    }
+    
+    // Validate email
+    if (!studentEmail.includes('@')) {
+        alert('Please enter a valid email address.');
+        return;
+    }
+    
+    // Handle branch selection
+    if (branchSelect === 'other') {
+        if (!branchOther) {
+            alert('Please specify your branch name.');
+            return;
+        }
+        studentBranch = branchOther;
+    } else {
+        studentBranch = branchSelect;
+    }
+    
+    console.log('Student details validated:', {studentFullName, studentPhone, studentEmail, studentHometown, studentHostel, studentRoom, studentRank, studentBranch});
+    console.log('Pending exam ID:', pendingExamId);
+    
+    // Hide modal first
+    document.getElementById('student-details-modal').classList.add('hidden');
+    console.log('Modal hidden');
+    
+    // Show introduction immediately
+    console.log('Calling showIntroduction...');
+    showIntroduction(pendingExamId);
+});
+
+// Introduction timer state
+let introTimerInterval = null;
+let introTimeRemaining = 0;
+
+// Main instructions timer state
+let mainInstructionsTimerInterval = null;
+let mainInstructionsTimeRemaining = 0;
+
+// Show introduction page
+async function showIntroduction(examId) {
+    try {
+        console.log('Loading introduction for exam:', examId);
+        const docSnap = await getDoc(doc(db, "tests", examId));
+        if(!docSnap.exists()) { 
+            alert("Exam not found"); 
+            return; 
+        }
+        
+        const exam = docSnap.data();
+        const introduction = exam.introduction;
+        
+        console.log('Introduction data type:', typeof introduction);
+        console.log('Introduction data:', introduction);
+        
+        let introTitle = exam.title || 'Exam Instructions';
+        let introContent = 'No specific instructions provided.<br><br>Good luck with your exam!';
+        let introBanner = '';
+        
+        if (introduction && typeof introduction === 'object' && !Array.isArray(introduction)) {
+            // JSON format (object)
+            console.log('Using JSON format for introduction');
+            introTitle = introduction.title || introTitle;
+            introContent = introduction.content || introContent;
+            if (introduction.banner) {
+                introBanner = `<img src="${introduction.banner}" style="max-width: 100%; height: auto; margin-bottom: 20px; border-radius: 8px;">`;
+                console.log('Banner added:', introduction.banner);
+            }
+        } else if (introduction && typeof introduction === 'string') {
+            // Legacy text format
+            console.log('Using legacy text format for introduction');
+            introContent = introduction;
+        } else {
+            console.log('No introduction data or invalid format');
+        }
+        
+        console.log('Setting introduction content...');
+        document.getElementById('intro-title').innerText = introTitle;
+        document.getElementById('intro-content').innerHTML = introBanner + introContent;
+        
+        // Start introduction timer
+        introTimeRemaining = exam.introTimeLimit || 120; // Default 2 minutes
+        console.log('Starting timer with', introTimeRemaining, 'seconds');
+        startIntroductionTimer();
+        
+        console.log('Switching to introduction-view...');
+        switchView('introduction-view');
+        console.log('Introduction view should now be visible');
+    } catch(e) {
+        console.error('Error in showIntroduction:', e);
+        alert('Error loading exam details: ' + e.message);
+    }
+}
+
+function startIntroductionTimer() {
+    if (introTimerInterval) clearInterval(introTimerInterval);
+    
+    updateIntroTimerDisplay();
+    
+    introTimerInterval = setInterval(() => {
+        introTimeRemaining--;
+        updateIntroTimerDisplay();
+        
+        if (introTimeRemaining <= 0) {
+            clearInterval(introTimerInterval);
+            // Auto-proceed to main instructions when intro time runs out
+            proceedToMainInstructions();
+        }
+    }, 1000);
+}
+
+function updateIntroTimerDisplay() {
+    const minutes = Math.floor(introTimeRemaining / 60);
+    const seconds = introTimeRemaining % 60;
+    document.getElementById('intro-timer').innerText = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+    
+    // Change color when time is running low
+    if (introTimeRemaining <= 30) {
+        document.getElementById('intro-timer').style.color = 'var(--danger)';
+    } else {
+        document.getElementById('intro-timer').style.color = 'var(--primary)';
+    }
+}
+
+window.cancelIntroduction = function() {
+    if (introTimerInterval) clearInterval(introTimerInterval);
+    if (mainInstructionsTimerInterval) clearInterval(mainInstructionsTimerInterval);
+    pendingExamId = null;
+    switchView('dash');
+};
+
+// Proceed from introduction to main instructions
+window.proceedToMainInstructions = function() {
+    console.log('Proceeding to main instructions');
+    if (introTimerInterval) {
+        clearInterval(introTimerInterval);
+        console.log('Introduction timer cleared');
+    }
+    
+    // Show main instructions view
+    switchView('main-instructions-view');
+    
+    // Start main instructions timer (default 5 minutes = 300 seconds)
+    mainInstructionsTimeRemaining = 300;
+    startMainInstructionsTimer();
+};
+
+function startMainInstructionsTimer() {
+    if (mainInstructionsTimerInterval) clearInterval(mainInstructionsTimerInterval);
+    
+    updateMainInstructionsTimerDisplay();
+    
+    mainInstructionsTimerInterval = setInterval(() => {
+        mainInstructionsTimeRemaining--;
+        updateMainInstructionsTimerDisplay();
+        
+        if (mainInstructionsTimeRemaining <= 0) {
+            clearInterval(mainInstructionsTimerInterval);
+            // Auto-start exam when main instructions time runs out
+            confirmAndStartExam();
+        }
+    }, 1000);
+}
+
+function updateMainInstructionsTimerDisplay() {
+    const minutes = Math.floor(mainInstructionsTimeRemaining / 60);
+    const seconds = mainInstructionsTimeRemaining % 60;
+    document.getElementById('main-instructions-timer').innerText = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+    
+    // Change color when time is running low
+    if (mainInstructionsTimeRemaining <= 60) {
+        document.getElementById('main-instructions-timer').style.color = 'var(--danger)';
+    } else {
+        document.getElementById('main-instructions-timer').style.color = 'var(--primary)';
+    }
+}
+
+window.cancelMainInstructions = function() {
+    if (mainInstructionsTimerInterval) clearInterval(mainInstructionsTimerInterval);
+    if (introTimerInterval) clearInterval(introTimerInterval);
+    pendingExamId = null;
+    switchView('dash');
+};
+
+window.confirmAndStartExam = function() {
+    console.log('Confirm and start exam clicked');
+    if (introTimerInterval) {
+        clearInterval(introTimerInterval);
+        console.log('Introduction timer cleared');
+    }
+    if (mainInstructionsTimerInterval) {
+        clearInterval(mainInstructionsTimerInterval);
+        console.log('Main instructions timer cleared');
+    }
+    if (pendingExamId) {
+        console.log('Starting exam:', pendingExamId);
+        window.initExam(pendingExamId);
+    } else {
+        console.error('No pending exam ID!');
+    }
+};
 
 // --- EXAM ENGINE ---
 window.initExam = async (tid) => {
@@ -185,8 +505,30 @@ window.initExam = async (tid) => {
             return;
         }
 
+        // 3. Store display options for use throughout exam
+        // If result type, hide marking scheme completely
+        if (currentExam.resultType === 'result') {
+            window.currentExamDisplayOptions = {
+                showMarkingScheme: false,
+                showRank: false,
+                showFinalMarks: false,
+                showCorrectAnswers: false
+            };
+        } else {
+            window.currentExamDisplayOptions = currentExam.displayOptions || {
+                showMarkingScheme: true,
+                showRank: true,
+                showFinalMarks: true,
+                showCorrectAnswers: true
+            };
+        }
+        
         // 3. Flatten questions for navigation
-        flattenQuestions(currentExam.questions);
+        if (currentExam.sections && Array.isArray(currentExam.sections)) {
+            flattenQuestions(currentExam.sections, true);
+        } else {
+            flattenQuestions(currentExam.questions, false);
+        }
 
         // 4. Init State
         userAnswers = {};
@@ -200,7 +542,12 @@ window.initExam = async (tid) => {
         // 5. Set Live Status
         try {
             const liveRef = await addDoc(collection(db, "live_status"), {
-                uid: currentUser.uid, name: currentUser.displayName, testId: tid, status: "Active", lastActive: new Date().toISOString()
+                uid: currentUser.uid, 
+                name: studentFullName || currentUser.displayName, 
+                phone: studentPhone || '',
+                testId: tid, 
+                status: "Active", 
+                lastActive: new Date().toISOString()
             });
             liveDocId = liveRef.id;
         } catch(e) {}
@@ -234,14 +581,41 @@ window.loadQuestion = (idx) => {
     const q = flatQuestions[idx];
     const area = document.getElementById('q-area');
 
+    // Check if we're entering a new section
+    const prevQ = idx > 0 ? flatQuestions[idx - 1] : null;
+    const isNewSection = !prevQ || (q.sectionIdx !== undefined && q.sectionIdx !== prevQ.sectionIdx);
+    
+    if (isNewSection && q.sectionTitle) {
+        // Show section instruction modal/alert
+        if (prevQ && prevQ.sectionIdx !== q.sectionIdx) {
+            alert(`📘 ${q.sectionTitle}\n\n${q.sectionInstruction || 'No specific instructions for this section.'}`);
+        }
+    }
+
     // Initialize tempAnswer with saved answer for this question
     tempAnswer = userAnswers[idx] !== undefined ? JSON.parse(JSON.stringify(userAnswers[idx])) : null;
 
     let imgHTML = q.img ? `<img src="${q.img}" class="q-img" onerror="this.style.display='none'">` : '';
-    let marks = `(+${q.pos || q.marks || 4}, -${q.neg || q.negativeMarks || 1})`;
+    
+    // Check if marking scheme should be shown
+    let marks = '';
+    if (window.currentExamDisplayOptions && window.currentExamDisplayOptions.showMarkingScheme) {
+        marks = `(+${q.pos || q.marks || 4}, -${q.neg || q.negativeMarks || 1})`;
+    }
 
     let questionText = q.question || q.text || '';
     let inputHTML = '';
+    
+    // Show section instruction below the question
+    let sectionInfoHTML = '';
+    if (q.sectionTitle) {
+        sectionInfoHTML = `
+            <div style="background: #e8f0fe; border-left: 4px solid var(--primary); padding: 12px; margin-bottom: 15px; border-radius: 4px;">
+                <strong style="color: var(--primary);">${q.sectionTitle}</strong>
+                ${q.sectionInstruction ? `<div style="margin-top: 5px; font-size: 0.9rem; color: var(--gray);">${q.sectionInstruction}</div>` : ''}
+            </div>
+        `;
+    }
 
     // Show passage above sub-question if present
     if (q.passage) {
@@ -320,9 +694,16 @@ window.loadQuestion = (idx) => {
         }
     }
 
+    // Build meta info without marks if disabled
+    let metaHTML = `<span>Q${idx+1} (${q.type})</span>`;
+    if (marks) {
+        metaHTML += `<span>Marks: ${marks}</span>`;
+    }
+    
     area.innerHTML = `
         <div class="question-card">
-            <div class="q-meta"><span>Q${idx+1} (${q.type})</span><span>Marks: ${marks}</span></div>
+            ${sectionInfoHTML}
+            <div class="q-meta">${metaHTML}</div>
             ${imgHTML}
             <div class="q-text">${questionText}</div>
             ${inputHTML}
@@ -472,7 +853,21 @@ function renderPalette() {
         </div>
         <div class="palette-grid" id="p-grid"></div>`;
     const grid = document.getElementById('p-grid');
+    
+    let lastSectionIdx = -1;
+    
     for (let i = 0; i < flatQuestions.length; i++) {
+        const q = flatQuestions[i];
+        
+        // Add section header if entering new section
+        if (q.sectionIdx !== undefined && q.sectionIdx !== lastSectionIdx) {
+            const sectionHeader = document.createElement('div');
+            sectionHeader.style.cssText = 'grid-column: 1 / -1; font-weight: bold; font-size: 0.8rem; color: var(--primary); margin-top: 10px; padding: 5px; background: #e8f0fe; border-radius: 4px; text-align: center;';
+            sectionHeader.innerText = q.sectionTitle || `Section ${q.sectionIdx + 1}`;
+            grid.appendChild(sectionHeader);
+            lastSectionIdx = q.sectionIdx;
+        }
+        
         const d = document.createElement('div');
         d.className = 'q-node';
         d.id = `node-${i}`;
@@ -611,9 +1006,16 @@ window.submitExam = async () => {
     });
 
     try {
-        await addDoc(collection(db, "results"), {
+        const resultDoc = await addDoc(collection(db, "results"), {
             uid: currentUser.uid,
-            studentName: currentUser.displayName || 'Student',
+            studentName: studentFullName || currentUser.displayName || 'Student',
+            studentPhone: studentPhone || '',
+            studentEmail: studentEmail || currentUser.email || '',
+            studentHometown: studentHometown || '',
+            studentHostel: studentHostel || '',
+            studentRoom: studentRoom || '',
+            studentRank: studentRank || '',
+            studentBranch: studentBranch || '',
             email: currentUser.email || '',
             examTitle: currentExam.title,
             testId: currentExam.id,
@@ -622,9 +1024,26 @@ window.submitExam = async () => {
             totalTimeSpent: Object.values(timeLog).reduce((a, b) => a + b, 0),
             timestamp: new Date().toISOString()
         });
+        
         if (liveDocId) updateDoc(doc(db, "live_status", liveDocId), { status: "Completed" });
-        alert(`Submitted! Score: ${score}`);
-        location.reload();
+        
+        // Store result ID for PDF generation
+        window.lastSubmittedResultId = resultDoc.id;
+        
+        // Show popup to download PDF
+        const downloadNow = confirm("✅ Exam submitted successfully!\n\nYour responses have been recorded.\n\nWould you like to download your exam response PDF now?");
+        
+        if (downloadNow) {
+            await downloadSubmittedExamPDF();
+        }
+        
+        // Redirect to result/analysis based on exam type
+        if (currentExam.resultType === 'result') {
+            window.loadResult(resultDoc.id);
+        } else {
+            window.loadAnalysis(resultDoc.id);
+        }
+        
     } catch(e) {
         console.error(e);
         alert("Error: " + e.message);
@@ -642,31 +1061,131 @@ window.loadAnalysis = async (resultId) => {
         const testSnap = await getDoc(doc(db, "tests", currentAnalysisData.testId));
         currentTestSchema = testSnap.data();
 
+        // Check if any question is missing answer key
+        const hasMissingAnswers = currentTestSchema.questions.some(q => {
+            if (q.type === 'passage' && Array.isArray(q.questions)) {
+                return q.questions.some(subQ => !subQ.answer && subQ.answer !== 0 && !subQ.correct && subQ.correct !== 0);
+            }
+            return !q.answer && q.answer !== 0 && !q.correct && q.correct !== 0;
+        });
+
+        // Check if results are released or if answers are missing
+        if (currentTestSchema.resultsReleased === false || hasMissingAnswers) {
+            switchView('anOverview');
+            document.getElementById('an-score').innerText = '---';
+            document.getElementById('an-rank').innerText = '---';
+            document.getElementById('an-accuracy').innerText = '---';
+            document.getElementById('an-grid').innerHTML = `
+                <div style="grid-column: 1 / -1; text-align:center; padding:40px; background:white; border-radius:8px;">
+                    <div style="font-size:3rem; margin-bottom:10px;">⏳</div>
+                    <h3 style="color:var(--primary); margin-bottom:10px;">Results Under Evaluation</h3>
+                    <p style="color:var(--gray);">Your exam has been submitted successfully. Results will be released soon by the admin.</p>
+                    <p style="color:var(--gray); font-size:0.9rem; margin-top:15px;">You will be able to view your score, rank, and detailed solutions once the results are announced.</p>
+                </div>
+            `;
+            return;
+        }
+
         // FIX: Flatten analysis questions here!
-        flattenAnalysisQuestions(currentTestSchema.questions);
+        if (currentTestSchema.sections && Array.isArray(currentTestSchema.sections)) {
+            flattenAnalysisQuestions(currentTestSchema.sections, true);
+        } else {
+            flattenAnalysisQuestions(currentTestSchema.questions, false);
+        }
 
         switchView('anOverview');
-        document.getElementById('an-score').innerText = `${currentAnalysisData.score} / ${currentTestSchema.questions.length * 4}`;
+        
+        // Get display options and store globally (default all to true for backward compatibility)
+        window.currentAnalysisDisplayOptions = currentTestSchema.displayOptions || {
+            showMarkingScheme: true,
+            showRank: true,
+            showFinalMarks: true,
+            showCorrectAnswers: true
+        };
+        const displayOptions = window.currentAnalysisDisplayOptions;
+        console.log('Display options loaded:', displayOptions);
+        
+        // Handle Score Display
+        const scoreContainer = document.getElementById('score-container');
+        if (!scoreContainer) {
+            console.error('❌ score-container NOT FOUND in DOM!');
+        } else {
+            console.log('✓ score-container found');
+            if (displayOptions.showFinalMarks) {
+                scoreContainer.style.display = '';
+                const scoreLabel = scoreContainer.querySelector('p');
+                if (scoreLabel) scoreLabel.innerText = 'Your Score';
+                document.getElementById('an-score').innerText = `${currentAnalysisData.score} / ${currentTestSchema.questions.length * 4}`;
+                document.getElementById('an-score').style.color = '';
+                console.log('Score shown:', currentAnalysisData.score);
+            } else {
+                // Show qualified/not qualified instead of marks
+                scoreContainer.style.display = '';
+                const scoreLabel = scoreContainer.querySelector('p');
+                if (scoreLabel) scoreLabel.innerText = 'Result';
+                const totalMarks = currentTestSchema.questions.length * 4;
+                const passingPercentage = 40; // 40% passing criteria
+                const passingMarks = (totalMarks * passingPercentage) / 100;
+                const isQualified = currentAnalysisData.score >= passingMarks;
+                document.getElementById('an-score').innerText = isQualified ? '✅ QUALIFIED' : '❌ NOT QUALIFIED';
+                document.getElementById('an-score').style.color = isQualified ? 'var(--success)' : 'var(--danger)';
+                console.log('Showing qualification status instead of marks');
+            }
+        }
+        
+        // Handle Rank Display
+        const rankContainer = document.getElementById('rank-container');
+        if (!rankContainer) {
+            console.error('❌ rank-container NOT FOUND in DOM!');
+        } else {
+            console.log('✓ rank-container found');
+            if (!displayOptions.showRank) {
+                rankContainer.style.display = 'none';
+                console.log('✓✓✓ Rank container HIDDEN with display=none');
+            } else {
+                rankContainer.style.display = '';
+                console.log('Rank container visible');
+            }
+        }
+        
+        // Handle Accuracy Display
+        const accuracyContainer = document.getElementById('accuracy-container');
+        if (!accuracyContainer) {
+            console.error('❌ accuracy-container NOT FOUND in DOM!');
+        } else {
+            console.log('✓ accuracy-container found');
+            if (!displayOptions.showFinalMarks) {
+                accuracyContainer.style.display = 'none';
+                console.log('✓✓✓ Accuracy container HIDDEN with display=none');
+            } else {
+                accuracyContainer.style.display = '';
+                console.log('Accuracy container visible');
+            }
+        }
 
         // --- Exact Rank Calculation ---
-        // 1. Fetch all results for this test
-        const allResultsSnap = await getDocs(query(collection(db, "results"), where("testId", "==", currentAnalysisData.testId)));
-        const allResults = [];
-        allResultsSnap.forEach(doc => {
-            const data = doc.data();
-            data.id = doc.id;
-            allResults.push(data);
-        });
+        if (displayOptions.showRank) {
+            // 1. Fetch all results for this test
+            const allResultsSnap = await getDocs(query(collection(db, "results"), where("testId", "==", currentAnalysisData.testId)));
+            const allResults = [];
+            allResultsSnap.forEach(doc => {
+                const data = doc.data();
+                data.id = doc.id;
+                allResults.push(data);
+            });
 
-        // 2. Sort by score descending, then by totalTimeSpent ascending (for tie-break)
-        allResults.sort((a, b) => {
-            if (b.score !== a.score) return b.score - a.score;
-            return (a.totalTimeSpent || 0) - (b.totalTimeSpent || 0);
-        });
+            // 2. Sort by score descending, then by totalTimeSpent ascending (for tie-break)
+            allResults.sort((a, b) => {
+                if (b.score !== a.score) return b.score - a.score;
+                return (a.totalTimeSpent || 0) - (b.totalTimeSpent || 0);
+            });
 
-        // 3. Find rank (1-based)
-        const myRank = allResults.findIndex(r => r.uid === currentUser.uid && r.timestamp === currentAnalysisData.timestamp) + 1;
-        document.getElementById('an-rank').innerText = myRank > 0 ? `# ${myRank}` : 'N/A';
+            // 3. Find rank (1-based)
+            const myRank = allResults.findIndex(r => r.uid === currentUser.uid && r.timestamp === currentAnalysisData.timestamp) + 1;
+            document.getElementById('an-rank').innerText = myRank > 0 ? `# ${myRank}` : 'N/A';
+        } else {
+            document.getElementById('an-rank').innerText = '---';
+        }
 
         let correctCount = currentAnalysisData.details.filter(d => d.isCorrect).length;
         let attemptedCount = currentAnalysisData.details.filter(d => d.userAns !== null).length;
@@ -694,6 +1213,14 @@ window.backToAnalysisGrid = () => switchView('anOverview');
 function renderSolution(idx) {
     const q = analysisFlatQuestions[idx];
     const detail = currentAnalysisData.details[idx];
+    
+    // Use globally stored display options
+    const displayOptions = window.currentAnalysisDisplayOptions || {
+        showMarkingScheme: true,
+        showRank: true,
+        showFinalMarks: true,
+        showCorrectAnswers: true
+    };
 
     let statusClass = 'status-skip', statusText = 'Skipped';
     if (detail.userAns !== null) {
@@ -717,18 +1244,29 @@ function renderSolution(idx) {
         q.options.forEach((opt, i) => {
             let txt = getOptTxt(opt);
             let borderStyle = '2px solid #ddd', bgStyle = '#fff';
-            if (i == (q.answer ?? q.correct)) { borderStyle = '2px solid var(--success)'; bgStyle = '#e6fffa'; }
-            else if (detail.userAns == i && !detail.isCorrect) { borderStyle = '2px solid var(--danger)'; bgStyle = '#fff5f5'; }
+            
+            // Only highlight correct answer if admin allows
+            if (displayOptions.showCorrectAnswers && i == (q.answer ?? q.correct)) { 
+                borderStyle = '2px solid var(--success)'; 
+                bgStyle = '#e6fffa'; 
+            }
+            
+            // Show wrong answers (always show user's mistakes)
+            if (detail.userAns == i && !detail.isCorrect) { 
+                borderStyle = '2px solid var(--danger)'; 
+                bgStyle = '#fff5f5'; 
+            }
+            
             optionsHTML += `
                 <div class="option-box" style="border:${borderStyle}; background:${bgStyle}; cursor:default">
                     <div>${txt}</div>
-                    ${i == (q.answer ?? q.correct) ? '<i class="fa fa-check" style="color:green; margin-left:auto"></i>' : ''}
+                    ${(displayOptions.showCorrectAnswers && i == (q.answer ?? q.correct)) ? '<i class="fa fa-check" style="color:green; margin-left:auto"></i>' : ''}
                     ${(detail.userAns == i && !detail.isCorrect) ? '<i class="fa fa-times" style="color:red; margin-left:auto"></i>' : ''}
                 </div>`;
         });
         optionsHTML += `</div>`;
         userAnsHTML = (detail.userAns !== null) ? `<div><b>Your Answer:</b> ${getOptTxt(q.options[detail.userAns])}</div>` : '';
-        correctAnsHTML = `<div><b>Correct Answer:</b> ${getOptTxt(q.options[q.answer ?? q.correct])}</div>`;
+        correctAnsHTML = displayOptions.showCorrectAnswers ? `<div><b>Correct Answer:</b> ${getOptTxt(q.options[q.answer ?? q.correct])}</div>` : '';
     } else if (q.type === 'multi') {
         optionsHTML = `<div class="options-grid">`;
         q.options.forEach((opt, i) => {
@@ -736,21 +1274,32 @@ function renderSolution(idx) {
             let isCorrect = Array.isArray(q.answer) && q.answer.includes(i);
             let isUser = Array.isArray(detail.userAns) && detail.userAns.includes(i);
             let borderStyle = '2px solid #ddd', bgStyle = '#fff';
-            if (isCorrect) { borderStyle = '2px solid var(--success)'; bgStyle = '#e6fffa'; }
-            if (isUser && !isCorrect) { borderStyle = '2px solid var(--danger)'; bgStyle = '#fff5f5'; }
+            
+            // Only show correct answers if admin allows
+            if (displayOptions.showCorrectAnswers && isCorrect) { 
+                borderStyle = '2px solid var(--success)'; 
+                bgStyle = '#e6fffa'; 
+            }
+            
+            // Always show user's wrong selections
+            if (isUser && !isCorrect) { 
+                borderStyle = '2px solid var(--danger)'; 
+                bgStyle = '#fff5f5'; 
+            }
+            
             optionsHTML += `
                 <div class="option-box" style="border:${borderStyle}; background:${bgStyle}; cursor:default">
                     <div>${txt}</div>
-                    ${isCorrect ? '<i class="fa fa-check" style="color:green; margin-left:auto"></i>' : ''}
+                    ${(displayOptions.showCorrectAnswers && isCorrect) ? '<i class="fa fa-check" style="color:green; margin-left:auto"></i>' : ''}
                     ${(isUser && !isCorrect) ? '<i class="fa fa-times" style="color:red; margin-left:auto"></i>' : ''}
                 </div>`;
         });
         optionsHTML += `</div>`;
         userAnsHTML = (Array.isArray(detail.userAns)) ? `<div><b>Your Answer:</b> ${detail.userAns.map(i => getOptTxt(q.options[i])).join(', ')}</div>` : '';
-        correctAnsHTML = (Array.isArray(q.answer)) ? `<div><b>Correct Answer:</b> ${q.answer.map(i => getOptTxt(q.options[i])).join(', ')}</div>` : '';
+        correctAnsHTML = displayOptions.showCorrectAnswers && Array.isArray(q.answer) ? `<div><b>Correct Answer:</b> ${q.answer.map(i => getOptTxt(q.options[i])).join(', ')}</div>` : '';
     } else if (q.type === 'integer' || q.type === 'numerical') {
         userAnsHTML = (detail.userAns !== null) ? `<div><b>Your Answer:</b> ${detail.userAns}</div>` : '';
-        correctAnsHTML = `<div><b>Correct Answer:</b> ${q.answer ?? q.correct}</div>`;
+        correctAnsHTML = displayOptions.showCorrectAnswers ? `<div><b>Correct Answer:</b> ${q.answer ?? q.correct}</div>` : '';
     } else if (q.type === 'matrix') {
         let legend = '';
         if (q.rows && q.columns) {
@@ -770,9 +1319,16 @@ function renderSolution(idx) {
                 let isCorrect = (correct.find(m => m.row === i) || {cols:[]}).cols.includes(j);
                 let isUser = Array.isArray(user[i]) && user[i].includes(j);
                 let cell = '';
-                if (isCorrect && isUser) cell = '<span style="color:green">&#10004;</span>'; // correct tick
-                else if (isCorrect) cell = '<span style="color:green">&#10003;</span>'; // correct only
-                else if (isUser) cell = '<span style="color:red">&#10008;</span>'; // user wrong
+                
+                if (displayOptions.showCorrectAnswers) {
+                    if (isCorrect && isUser) cell = '<span style="color:green">&#10004;</span>'; // correct tick
+                    else if (isCorrect) cell = '<span style="color:green">&#10003;</span>'; // correct only
+                    else if (isUser) cell = '<span style="color:red">&#10008;</span>'; // user wrong
+                } else {
+                    // Only show user's wrong answers
+                    if (isUser && !isCorrect) cell = '<span style="color:red">&#10008;</span>';
+                }
+                
                 optionsHTML += `<td style="text-align:center">${cell}</td>`;
             });
             optionsHTML += `</tr>`;
@@ -780,19 +1336,35 @@ function renderSolution(idx) {
         optionsHTML += `</table>`;
         // Show user and correct answers as text
         userAnsHTML = `<div><b>Your Matches:</b> ${JSON.stringify(user)}</div>`;
-        correctAnsHTML = `<div><b>Correct Matches:</b> ${JSON.stringify(correct)}</div>`;
+        correctAnsHTML = displayOptions.showCorrectAnswers ? `<div><b>Correct Matches:</b> ${JSON.stringify(correct)}</div>` : '';
     }
 
+    // Build marks display
+    let marksHTML = '';
+    if (displayOptions.showMarkingScheme) {
+        marksHTML = `<span style="font-weight:bold; color:${detail.marks >= 0 ? 'var(--success)' : 'var(--danger)'}">Marks: ${detail.marks > 0 ? '+' : ''}${detail.marks}</span>`;
+    }
+    
+    // Hide correct answers if admin disabled
+    const correctAnswerHTML = displayOptions.showCorrectAnswers ? correctAnsHTML : '';
+    const explanationHTML = displayOptions.showCorrectAnswers && q.explanation ? `<div class="explanation-box"><strong>Explanation:</strong><br>${q.explanation}</div>` : '';
+    
+    // Build meta info conditionally
+    let metaItems = [`<span>Q${idx+1}</span>`, `<span>Time Spent: ${Math.round(detail.time)}s</span>`];
+    if (marksHTML) {
+        metaItems.push(marksHTML);
+    }
+    
     document.getElementById('sol-content').innerHTML = `
         <div class="sol-status ${statusClass}">${statusText}</div>
-        <div class="q-meta"><span>Q${idx+1}</span><span>Time Spent: ${Math.round(detail.time)}s</span><span style="font-weight:bold; color:${detail.marks >= 0 ? 'var(--success)' : 'var(--danger)'}">Marks: ${detail.marks > 0 ? '+' : ''}${detail.marks}</span></div>
+        <div class="q-meta">${metaItems.join('')}</div>
         ${q.img ? `<img src="${q.img}" class="q-img">` : ''}
         ${passageHTML}
         <div class="q-text">${questionText}</div>
         ${optionsHTML}
         ${userAnsHTML}
-        ${correctAnsHTML}
-        ${q.explanation ? `<div class="explanation-box"><strong>Explanation:</strong><br>${q.explanation}</div>` : ''}
+        ${correctAnswerHTML}
+        ${explanationHTML}
     `;
 
     document.getElementById('prev-sol-btn').disabled = idx === 0;
@@ -848,49 +1420,119 @@ function renderQuestion(q, idx) {
 }
 
 // Flatten questions for easier navigation and analysis
-function flattenQuestions(questions) {
+function flattenQuestions(questionsOrSections, isSectionBased = false) {
     flatQuestions = [];
     flatToOriginal = [];
-    questions.forEach((q, i) => {
-        if (q.type === 'passage' && Array.isArray(q.questions)) {
-            q.questions.forEach((subq, subIdx) => {
-                flatQuestions.push({
-                    ...subq,
-                    passage: q.passage,
-                    parentIdx: i,
-                    subIdx: subIdx,
-                    type: subq.type || 'single' // default to single if not specified
-                });
-                flatToOriginal.push({ parent: i, sub: subIdx });
+    
+    if (isSectionBased) {
+        // Handle section-based structure
+        questionsOrSections.forEach((section, sectionIdx) => {
+            if (!Array.isArray(section.questions)) return;
+            
+            section.questions.forEach((q, qIdx) => {
+                if (q.type === 'passage' && Array.isArray(q.questions)) {
+                    q.questions.forEach((subq, subIdx) => {
+                        flatQuestions.push({
+                            ...subq,
+                            passage: q.passage,
+                            sectionTitle: section.title,
+                            sectionInstruction: section.instruction,
+                            sectionIdx: sectionIdx,
+                            parentIdx: qIdx,
+                            subIdx: subIdx,
+                            type: subq.type || 'single'
+                        });
+                        flatToOriginal.push({ section: sectionIdx, parent: qIdx, sub: subIdx });
+                    });
+                } else {
+                    flatQuestions.push({
+                        ...q,
+                        sectionTitle: section.title,
+                        sectionInstruction: section.instruction,
+                        sectionIdx: sectionIdx
+                    });
+                    flatToOriginal.push({ section: sectionIdx, parent: qIdx, sub: null });
+                }
             });
-        } else {
-            flatQuestions.push(q);
-            flatToOriginal.push({ parent: i, sub: null });
-        }
-    });
+        });
+    } else {
+        // Legacy format: flat array of questions
+        questionsOrSections.forEach((q, i) => {
+            if (q.type === 'passage' && Array.isArray(q.questions)) {
+                q.questions.forEach((subq, subIdx) => {
+                    flatQuestions.push({
+                        ...subq,
+                        passage: q.passage,
+                        parentIdx: i,
+                        subIdx: subIdx,
+                        type: subq.type || 'single'
+                    });
+                    flatToOriginal.push({ parent: i, sub: subIdx });
+                });
+            } else {
+                flatQuestions.push(q);
+                flatToOriginal.push({ parent: i, sub: null });
+            }
+        });
+    }
 }
 
 // Flatten analysis questions for easier navigation in analysis view
-function flattenAnalysisQuestions(questions) {
+function flattenAnalysisQuestions(questionsOrSections, isSectionBased = false) {
     analysisFlatQuestions = [];
     analysisFlatToOriginal = [];
-    questions.forEach((q, i) => {
-        if (q.type === 'passage' && Array.isArray(q.questions)) {
-            q.questions.forEach((subq, subIdx) => {
-                analysisFlatQuestions.push({
-                    ...subq,
-                    passage: q.passage,
-                    parentIdx: i,
-                    subIdx: subIdx,
-                    type: subq.type || 'single'
-                });
-                analysisFlatToOriginal.push({ parent: i, sub: subIdx });
+    
+    if (isSectionBased) {
+        // Handle section-based structure
+        questionsOrSections.forEach((section, sectionIdx) => {
+            if (!Array.isArray(section.questions)) return;
+            
+            section.questions.forEach((q, qIdx) => {
+                if (q.type === 'passage' && Array.isArray(q.questions)) {
+                    q.questions.forEach((subq, subIdx) => {
+                        analysisFlatQuestions.push({
+                            ...subq,
+                            passage: q.passage,
+                            sectionTitle: section.title,
+                            sectionInstruction: section.instruction,
+                            sectionIdx: sectionIdx,
+                            parentIdx: qIdx,
+                            subIdx: subIdx,
+                            type: subq.type || 'single'
+                        });
+                        analysisFlatToOriginal.push({ section: sectionIdx, parent: qIdx, sub: subIdx });
+                    });
+                } else {
+                    analysisFlatQuestions.push({
+                        ...q,
+                        sectionTitle: section.title,
+                        sectionInstruction: section.instruction,
+                        sectionIdx: sectionIdx
+                    });
+                    analysisFlatToOriginal.push({ section: sectionIdx, parent: qIdx, sub: null });
+                }
             });
-        } else {
-            analysisFlatQuestions.push(q);
-            analysisFlatToOriginal.push({ parent: i, sub: null });
-        }
-    });
+        });
+    } else {
+        // Legacy format: flat array of questions
+        questionsOrSections.forEach((q, i) => {
+            if (q.type === 'passage' && Array.isArray(q.questions)) {
+                q.questions.forEach((subq, subIdx) => {
+                    analysisFlatQuestions.push({
+                        ...subq,
+                        passage: q.passage,
+                        parentIdx: i,
+                        subIdx: subIdx,
+                        type: subq.type || 'single'
+                    });
+                    analysisFlatToOriginal.push({ parent: i, sub: subIdx });
+                });
+            } else {
+                analysisFlatQuestions.push(q);
+                analysisFlatToOriginal.push({ parent: i, sub: null });
+            }
+        });
+    }
 }
 
 // --- On Exam Fetch ---
@@ -909,3 +1551,503 @@ function setTempMatrix(i, j, checked) {
         tempAnswer[i] = tempAnswer[i].filter(x => x !== j);
     }
 }
+
+// --- PDF DOWNLOAD FUNCTION ---
+window.downloadExamPDF = async function() {
+    if (!currentTestSchema || !currentAnalysisData) {
+        alert('No exam data available for download.');
+        return;
+    }
+    
+    try {
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF();
+        
+        let yPos = 20;
+        const pageHeight = doc.internal.pageSize.height;
+        const margin = 20;
+        const lineHeight = 7;
+        
+        // Helper function to add text with page break
+        const addText = (text, x, fontSize = 12, isBold = false) => {
+            if (yPos > pageHeight - 30) {
+                doc.addPage();
+                yPos = 20;
+            }
+            doc.setFontSize(fontSize);
+            doc.setFont(undefined, isBold ? 'bold' : 'normal');
+            doc.text(text, x, yPos);
+            yPos += lineHeight;
+        };
+        
+        const addMultilineText = (text, x, maxWidth, fontSize = 11) => {
+            doc.setFontSize(fontSize);
+            const lines = doc.splitTextToSize(text, maxWidth);
+            lines.forEach(line => {
+                if (yPos > pageHeight - 30) {
+                    doc.addPage();
+                    yPos = 20;
+                }
+                doc.text(line, x, yPos);
+                yPos += lineHeight;
+            });
+        };
+        
+        // Title
+        addText(currentTestSchema.title || 'Exam Report', margin, 18, true);
+        yPos += 5;
+        
+        // Student Info
+        addText(`Student: ${studentFullName || currentUser.displayName || 'Student'}`, margin, 12);
+        if (studentPhone) addText(`Phone: ${studentPhone}`, margin, 12);
+        addText(`Date: ${new Date(currentAnalysisData.timestamp).toLocaleString()}`, margin, 12);
+        yPos += 5;
+        
+        // Introduction
+        if (currentTestSchema.introduction) {
+            addText('INTRODUCTION', margin, 14, true);
+            addMultilineText(currentTestSchema.introduction, margin, 170, 10);
+            yPos += 5;
+        }
+        
+        // Section divider
+        doc.setDrawColor(0, 0, 0);
+        doc.line(margin, yPos, 190, yPos);
+        yPos += 10;
+        
+        // Questions and Answers
+        addText('YOUR RESPONSES', margin, 14, true);
+        yPos += 3;
+        
+        let lastSectionIdx = -1;
+        
+        analysisFlatQuestions.forEach((q, idx) => {
+            const detail = currentAnalysisData.details[idx];
+            
+            // Add section header if entering new section
+            if (q.sectionIdx !== undefined && q.sectionIdx !== lastSectionIdx) {
+                yPos += 3;
+                addText(q.sectionTitle || `Section ${q.sectionIdx + 1}`, margin, 13, true);
+                if (q.sectionInstruction) {
+                    addMultilineText(q.sectionInstruction, margin + 5, 165, 10);
+                }
+                yPos += 3;
+                lastSectionIdx = q.sectionIdx;
+            }
+            
+            // Question number and status
+            let status = 'Skipped';
+            if (detail.userAns !== null) {
+                status = detail.isCorrect ? 'Correct' : 'Wrong';
+            }
+            addText(`Q${idx + 1}. ${status}`, margin, 12, true);
+            
+            // Question text (remove HTML tags for PDF)
+            const questionText = (q.question || q.text || '').replace(/<[^>]*>/g, '');
+            addMultilineText(questionText, margin + 5, 165, 11);
+            
+            // User's answer
+            let userAnsText = 'Not Answered';
+            if (detail.userAns !== null) {
+                if (q.type === 'single' && q.options) {
+                    userAnsText = `Your Answer: ${q.options[detail.userAns]}`.replace(/<[^>]*>/g, '');
+                } else if (q.type === 'multi' && Array.isArray(detail.userAns) && q.options) {
+                    userAnsText = `Your Answer: ${detail.userAns.map(i => q.options[i]).join(', ')}`.replace(/<[^>]*>/g, '');
+                } else if (q.type === 'integer' || q.type === 'numerical') {
+                    userAnsText = `Your Answer: ${detail.userAns}`;
+                } else {
+                    userAnsText = `Your Answer: ${JSON.stringify(detail.userAns)}`;
+                }
+            }
+            addMultilineText(userAnsText, margin + 5, 165, 10);
+            yPos += 5;
+        });
+        
+        // Save PDF
+        const filename = `${currentTestSchema.title || 'Exam'}_${studentFullName || 'Student'}_${new Date().toISOString().split('T')[0]}.pdf`;
+        doc.save(filename);
+        
+    } catch (error) {
+        console.error('PDF Generation Error:', error);
+        alert('Error generating PDF. Please try again.');
+    }
+};
+
+// --- RESULT VIEW (for result-type exams) ---
+window.loadResult = async (resultId) => {
+    try {
+        const resSnap = await getDoc(doc(db, "results", resultId));
+        if (!resSnap.exists()) {
+            alert('Result not found');
+            return;
+        }
+        
+        const resultData = resSnap.data();
+        
+        const testSnap = await getDoc(doc(db, "tests", resultData.testId));
+        const testData = testSnap.data();
+        
+        switchView('result-view');
+        
+        // Check if result is released
+        if (resultData.resultReleased !== true) {
+            document.getElementById('result-status').innerText = '⏳';
+            document.getElementById('result-title').innerText = 'Result Under Review';
+            document.getElementById('result-message').innerText = 'Your exam has been submitted successfully. The admin is reviewing all responses. Results will be announced soon.';
+            document.getElementById('result-details').innerHTML = `
+                <p style="margin:0;"><strong>Exam:</strong> ${testData.title}</p>
+                <p style="margin:10px 0 0 0;"><strong>Submitted on:</strong> ${new Date(resultData.timestamp).toLocaleString()}</p>
+                <div style="margin-top:20px; text-align:center;">
+                    <button class="btn btn-primary" onclick="downloadSubmittedExamPDF('${resultId}')">
+                        <i class="fa fa-download"></i> Download Exam Response PDF
+                    </button>
+                </div>
+            `;
+            return;
+        }
+        
+        // Result is released - show qualification status
+        const isQualified = resultData.qualified === true;
+        
+        if (isQualified) {
+            document.getElementById('result-status').innerText = '🎉';
+            document.getElementById('result-title').innerText = 'Congratulations!';
+            document.getElementById('result-title').style.color = 'var(--success)';
+            document.getElementById('result-message').innerText = 'You have been declared QUALIFIED for this examination.';
+        } else {
+            document.getElementById('result-status').innerText = '📋';
+            document.getElementById('result-title').innerText = 'Result Declared';
+            document.getElementById('result-title').style.color = 'var(--danger)';
+            document.getElementById('result-message').innerText = 'Unfortunately, you have not qualified in this examination.';
+        }
+        
+        document.getElementById('result-details').innerHTML = `
+            <p style="margin:0;"><strong>Exam:</strong> ${testData.title}</p>
+            <p style="margin:10px 0 0 0;"><strong>Submitted on:</strong> ${new Date(resultData.timestamp).toLocaleString()}</p>
+            <p style="margin:10px 0 0 0;"><strong>Result announced on:</strong> ${new Date(resultData.releasedAt).toLocaleString()}</p>
+            <div style="margin-top:20px; padding:15px; background:${isQualified ? '#d4edda' : '#f8d7da'}; border-radius:6px; text-align:center;">
+                <h3 style="margin:0; color:${isQualified ? 'green' : 'red'};">${isQualified ? '✅ QUALIFIED' : '❌ NOT QUALIFIED'}</h3>
+            </div>
+            <div style="margin-top:20px; text-align:center;">
+                <button class="btn btn-primary" onclick="downloadSubmittedExamPDF('${resultId}')">
+                    <i class="fa fa-download"></i> Download Exam Response PDF
+                </button>
+            </div>
+        `;
+        
+    } catch(e) {
+        console.error(e);
+        alert('Error loading result: ' + e.message);
+    }
+};
+
+// --- DOWNLOAD SUBMITTED EXAM PDF (Student's Responses Only) ---
+window.downloadSubmittedExamPDF = async function(resultId) {
+    try {
+        const useResultId = resultId || window.lastSubmittedResultId;
+        if (!useResultId) {
+            alert('Unable to generate PDF. Please try again.');
+            return;
+        }
+        
+        // Fetch result data
+        const resultDocRef = doc(db, "results", useResultId);
+        const resultSnap = await getDoc(resultDocRef);
+        if (!resultSnap.exists()) {
+            alert('Result not found');
+            return;
+        }
+        
+        const resultData = resultSnap.data();
+        
+        // Fetch exam data
+        const examDocRef = doc(db, "tests", resultData.testId);
+        const examSnap = await getDoc(examDocRef);
+        if (!examSnap.exists()) {
+            alert('Exam not found');
+            return;
+        }
+        
+        const examData = examSnap.data();
+        
+        // Flatten questions
+        let questions = [];
+        if (examData.sections && Array.isArray(examData.sections)) {
+            examData.sections.forEach(section => {
+                if (Array.isArray(section.questions)) {
+                    questions.push(...section.questions);
+                }
+            });
+        } else if (Array.isArray(examData.questions)) {
+            questions = examData.questions;
+        }
+        
+        // Generate PDF using jsPDF
+        const { jsPDF } = window.jspdf;
+        const pdfDoc = new jsPDF();
+        
+        let yPos = 20;
+        const margin = 15;
+        const pageHeight = pdfDoc.internal.pageSize.height;
+        const pageWidth = pdfDoc.internal.pageSize.width;
+        const maxWidth = pageWidth - (2 * margin);
+        
+        // Helper function to convert image URL to base64
+        async function loadImageAsBase64(imagePath) {
+            return new Promise((resolve, reject) => {
+                if (!imagePath) {
+                    resolve(null);
+                    return;
+                }
+                
+                const img = new Image();
+                img.crossOrigin = 'Anonymous';
+                
+                img.onload = function() {
+                    try {
+                        const canvas = document.createElement('canvas');
+                        canvas.width = img.width;
+                        canvas.height = img.height;
+                        const ctx = canvas.getContext('2d');
+                        ctx.drawImage(img, 0, 0);
+                        const dataURL = canvas.toDataURL('image/jpeg', 0.8);
+                        resolve(dataURL);
+                    } catch (err) {
+                        console.warn('Error converting image:', err);
+                        resolve(null);
+                    }
+                };
+                
+                img.onerror = function() {
+                    console.warn('Failed to load image:', imagePath);
+                    resolve(null);
+                };
+                
+                // Handle relative paths from images folder
+                if (!imagePath.startsWith('http') && !imagePath.startsWith('data:')) {
+                    img.src = imagePath.startsWith('images/') ? imagePath : `images/${imagePath}`;
+                } else {
+                    img.src = imagePath;
+                }
+            });
+        }
+        
+        // Helper function to add text with word wrap
+        function addText(text, x, y, fontSize = 10, isBold = false) {
+            pdfDoc.setFontSize(fontSize);
+            pdfDoc.setFont(undefined, isBold ? 'bold' : 'normal');
+            return pdfDoc.text(text, x, y, { maxWidth: maxWidth });
+        }
+        
+        // Helper function to add multiline text and return height
+        function addMultilineText(text, x, y, fontSize = 10, maxW = null) {
+            pdfDoc.setFontSize(fontSize);
+            pdfDoc.setFont(undefined, 'normal');
+            const lines = pdfDoc.splitTextToSize(text, maxW || maxWidth);
+            pdfDoc.text(lines, x, y);
+            return lines.length * (fontSize * 0.4);
+        }
+        
+        // Helper to check if we need a new page
+        function checkPageBreak(requiredSpace = 40) {
+            if (yPos + requiredSpace > pageHeight - 20) {
+                pdfDoc.addPage();
+                yPos = 20;
+                return true;
+            }
+            return false;
+        }
+        
+        // Title
+        pdfDoc.setFillColor(66, 133, 244);
+        pdfDoc.rect(0, 0, pageWidth, 30, 'F');
+        pdfDoc.setTextColor(255, 255, 255);
+        pdfDoc.setFontSize(18);
+        pdfDoc.setFont(undefined, 'bold');
+        pdfDoc.text('EXAM RESPONSE SHEET', pageWidth / 2, 18, { align: 'center' });
+        pdfDoc.setTextColor(0, 0, 0);
+        
+        yPos = 40;
+        
+        // Student Details (Introduction section removed from PDF)
+        pdfDoc.setFontSize(14);
+        pdfDoc.setFont(undefined, 'bold');
+        pdfDoc.text('Student Information', margin, yPos);
+        yPos += 8;
+        
+        pdfDoc.setFontSize(10);
+        pdfDoc.setFont(undefined, 'normal');
+        pdfDoc.text(`Name: ${resultData.studentName || 'N/A'}`, margin, yPos);
+        yPos += 6;
+        pdfDoc.text(`WhatsApp: ${resultData.studentPhone || 'N/A'}`, margin, yPos);
+        pdfDoc.text(`Email: ${resultData.studentEmail || resultData.email || 'N/A'}`, margin + 80, yPos);
+        yPos += 6;
+        pdfDoc.text(`Hometown: ${resultData.studentHometown || 'N/A'}`, margin, yPos);
+        pdfDoc.text(`Hostel: ${resultData.studentHostel || 'N/A'}`, margin + 80, yPos);
+        yPos += 6;
+        pdfDoc.text(`Room: ${resultData.studentRoom || 'N/A'}`, margin, yPos);
+        pdfDoc.text(`JEE Rank: ${resultData.studentRank || 'N/A'}`, margin + 80, yPos);
+        yPos += 6;
+        pdfDoc.text(`Branch: ${resultData.studentBranch || 'N/A'}`, margin, yPos);
+        yPos += 10;
+        
+        // Exam Details
+        pdfDoc.setFontSize(14);
+        pdfDoc.setFont(undefined, 'bold');
+        pdfDoc.text('Exam Information', margin, yPos);
+        yPos += 8;
+        
+        pdfDoc.setFontSize(10);
+        pdfDoc.setFont(undefined, 'normal');
+        pdfDoc.text(`Exam: ${examData.title || 'N/A'}`, margin, yPos);
+        yPos += 6;
+        pdfDoc.text(`Submitted: ${new Date(resultData.timestamp).toLocaleString()}`, margin, yPos);
+        yPos += 6;
+        pdfDoc.text(`Time Taken: ${Math.floor(resultData.totalTimeSpent / 60)} minutes ${Math.floor(resultData.totalTimeSpent % 60)} seconds`, margin, yPos);
+        yPos += 15;
+        
+        // Questions and Answers
+        pdfDoc.setFontSize(14);
+        pdfDoc.setFont(undefined, 'bold');
+        pdfDoc.text('Your Responses', margin, yPos);
+        yPos += 10;
+        
+        for (let idx = 0; idx < questions.length; idx++) {
+            const q = questions[idx];
+            checkPageBreak(60);
+            
+            const detail = resultData.details[idx] || {};
+            const userAns = detail.userAns;
+            
+            // Determine status
+            let status = 'Not Visited';
+            let statusColor = [150, 150, 150];
+            if (userAns === null || userAns === undefined) {
+                status = 'Skipped';
+                statusColor = [255, 193, 7];
+            } else {
+                status = 'Answered';
+                statusColor = [76, 175, 80];
+            }
+            
+            // Question header
+            pdfDoc.setFillColor(240, 240, 240);
+            pdfDoc.rect(margin, yPos, maxWidth, 8, 'F');
+            pdfDoc.setFontSize(11);
+            pdfDoc.setFont(undefined, 'bold');
+            pdfDoc.text(`Question ${idx + 1}`, margin + 2, yPos + 5);
+            
+            // Status badge
+            pdfDoc.setFillColor(...statusColor);
+            pdfDoc.rect(pageWidth - margin - 30, yPos, 30, 8, 'F');
+            pdfDoc.setTextColor(255, 255, 255);
+            pdfDoc.setFontSize(8);
+            pdfDoc.text(status, pageWidth - margin - 28, yPos + 5);
+            pdfDoc.setTextColor(0, 0, 0);
+            
+            yPos += 12;
+            
+            // Question text
+            pdfDoc.setFontSize(10);
+            pdfDoc.setFont(undefined, 'normal');
+            const qText = q.question || q.text || 'No question text';
+            const qHeight = addMultilineText(qText, margin + 2, yPos, 10);
+            yPos += qHeight + 5;
+            
+            // Question image
+            if (q.image) {
+                checkPageBreak(60);
+                try {
+                    const imgData = await loadImageAsBase64(q.image);
+                    if (imgData) {
+                        const imgWidth = 80;
+                        const imgHeight = 60;
+                        pdfDoc.addImage(imgData, 'JPEG', margin + 2, yPos, imgWidth, imgHeight);
+                        yPos += imgHeight + 5;
+                    }
+                } catch (err) {
+                    console.warn('Could not add question image:', err);
+                }
+            }
+            
+            checkPageBreak(30);
+            
+            // Options (for MCQ)
+            if (q.type === 'single' || q.type === 'multi') {
+                if (q.options && Array.isArray(q.options)) {
+                    for (let optIdx = 0; optIdx < q.options.length; optIdx++) {
+                        const opt = q.options[optIdx];
+                        checkPageBreak(40);
+                        const optText = typeof opt === 'object' ? opt.text : opt;
+                        const optImage = typeof opt === 'object' ? opt.image : null;
+                        const isSelected = Array.isArray(userAns) ? userAns.includes(optIdx) : userAns === optIdx;
+                        
+                        // Option label and text with proper wrapping
+                        const optLabel = String.fromCharCode(65 + optIdx);
+                        const optionTextWidth = maxWidth - 8; // Leave space for indentation
+                        
+                        pdfDoc.setFontSize(10);
+                        pdfDoc.setFont(undefined, isSelected ? 'bold' : 'normal');
+                        
+                        // Split option text into lines
+                        const optLines = pdfDoc.splitTextToSize(`${optLabel}) ${optText}`, optionTextWidth);
+                        const optTextHeight = optLines.length * 5;
+                        
+                        // Check if we need more space for multiline option
+                        if (optTextHeight > 6) {
+                            checkPageBreak(optTextHeight + 10);
+                        }
+                        
+                        // Highlight selected option
+                        if (isSelected) {
+                            pdfDoc.setFillColor(173, 216, 230);
+                            pdfDoc.rect(margin + 2, yPos - 4, maxWidth - 4, optTextHeight + 2, 'F');
+                        }
+                        
+                        pdfDoc.text(optLines, margin + 4, yPos);
+                        yPos += optTextHeight + 2;
+                        
+                        // Option image
+                        if (optImage) {
+                            checkPageBreak(45);
+                            try {
+                                const imgData = await loadImageAsBase64(optImage);
+                                if (imgData) {
+                                    const imgWidth = 60;
+                                    const imgHeight = 45;
+                                    pdfDoc.addImage(imgData, 'JPEG', margin + 10, yPos, imgWidth, imgHeight);
+                                    yPos += imgHeight + 3;
+                                }
+                            } catch (err) {
+                                console.warn('Could not add option image:', err);
+                            }
+                        }
+                    }
+                }
+            } else {
+                // For numerical/integer type
+                const ansText = userAns !== null && userAns !== undefined ? `Your Answer: ${userAns}` : 'Not Answered';
+                pdfDoc.setFont(undefined, 'bold');
+                pdfDoc.text(ansText, margin + 4, yPos);
+                yPos += 6;
+            }
+            
+            yPos += 8;
+        }
+        
+        // Footer on last page
+        pdfDoc.setFontSize(8);
+        pdfDoc.setTextColor(150, 150, 150);
+        pdfDoc.text('This is a computer-generated document. No signature required.', pageWidth / 2, pageHeight - 10, { align: 'center' });
+        
+        // Save PDF
+        const filename = `${examData.title || 'Exam'}_Response_${resultData.studentName || 'Student'}_${new Date().toISOString().split('T')[0]}.pdf`;
+        pdfDoc.save(filename);
+        
+        console.log('PDF downloaded successfully');
+        
+    } catch (error) {
+        console.error('PDF Generation Error:', error);
+        alert('Error generating PDF. Please try again.');
+    }
+};

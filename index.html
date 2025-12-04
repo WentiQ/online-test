@@ -11,6 +11,7 @@
     
     <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script> 
     <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 </head>
 <body oncontextmenu="return false;">
 
@@ -68,19 +69,24 @@
     <div id="analysis-overview" class="container hidden">
         <div class="dashboard-header">
             <h2 style="color:var(--dark)">Performance Analysis</h2>
-            <button class="btn btn-outline" onclick="location.reload()">Back to Dashboard</button>
+            <div style="display: flex; gap: 10px;">
+                <button class="btn btn-primary" onclick="downloadExamPDF()">
+                    <i class="fa fa-download"></i> Download PDF
+                </button>
+                <button class="btn btn-outline" onclick="location.reload()">Back to Dashboard</button>
+            </div>
         </div>
 
         <div class="analysis-header">
-            <div>
+            <div id="score-container">
                 <p style="color:var(--gray)">Your Score</p>
                 <div class="score-big" id="an-score">0/0</div>
             </div>
-            <div>
+            <div id="rank-container">
                 <p style="color:var(--gray)">All India Rank (Est)</p>
                 <div class="rank-badge" id="an-rank"># -</div>
             </div>
-            <div style="text-align:right">
+            <div id="accuracy-container" style="text-align:right">
                 <p style="color:var(--gray)">Accuracy</p>
                 <div style="font-size:1.5rem; font-weight:bold" id="an-accuracy">0%</div>
             </div>
@@ -101,6 +107,230 @@
         <div style="margin-top:20px; display:flex; justify-content:space-between">
             <button class="btn btn-outline" id="prev-sol-btn">Previous</button>
             <button class="btn btn-primary" id="next-sol-btn">Next</button>
+        </div>
+    </div>
+
+    <!-- Student Details Modal -->
+    <div id="student-details-modal" class="modal hidden">
+        <div class="modal-content" style="max-width: 600px; max-height: 90vh; overflow-y: auto;">
+            <h3 style="margin-bottom: 20px; color: var(--primary);">Enter Your Details</h3>
+            <p style="color: var(--gray); margin-bottom: 20px;">Please provide your information before starting the exam.</p>
+            <form id="student-details-form">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                    <div style="grid-column: 1 / -1;">
+                        <label style="display: block; margin-bottom: 5px; font-weight: 600;">Full Name *</label>
+                        <input type="text" id="student-full-name" required style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
+                    </div>
+                    
+                    <div>
+                        <label style="display: block; margin-bottom: 5px; font-weight: 600;">WhatsApp Number *</label>
+                        <input type="tel" id="student-phone" required pattern="[0-9]{10}" placeholder="10-digit number" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
+                    </div>
+                    
+                    <div>
+                        <label style="display: block; margin-bottom: 5px; font-weight: 600;">Gmail ID *</label>
+                        <input type="email" id="student-email" required placeholder="yourmail@gmail.com" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
+                    </div>
+                    
+                    <div>
+                        <label style="display: block; margin-bottom: 5px; font-weight: 600;">Home Town *</label>
+                        <input type="text" id="student-hometown" required style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
+                    </div>
+                    
+                    <div>
+                        <label style="display: block; margin-bottom: 5px; font-weight: 600;">Hostel Name *</label>
+                        <input type="text" id="student-hostel" required style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
+                    </div>
+                    
+                    <div>
+                        <label style="display: block; margin-bottom: 5px; font-weight: 600;">Room Number *</label>
+                        <input type="text" id="student-room" required style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
+                    </div>
+                    
+                    <div>
+                        <label style="display: block; margin-bottom: 5px; font-weight: 600;">JEE Advanced CRL Rank *</label>
+                        <input type="number" id="student-rank" required min="1" placeholder="e.g. 1234" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
+                    </div>
+                    
+                    <div style="grid-column: 1 / -1;">
+                        <label style="display: block; margin-bottom: 5px; font-weight: 600;">Branch Name *</label>
+                        <select id="student-branch" required style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
+                            <option value="">-- Select Branch --</option>
+                            <option value="Computer Science and Engineering">Computer Science and Engineering</option>
+                            <option value="Electrical Engineering">Electrical Engineering</option>
+                            <option value="Mechanical Engineering">Mechanical Engineering</option>
+                            <option value="Civil Engineering">Civil Engineering</option>
+                            <option value="Chemical Engineering">Chemical Engineering</option>
+                            <option value="Engineering Physics">Engineering Physics</option>
+                            <option value="other">Other (specify below)</option>
+                        </select>
+                    </div>
+                    
+                    <div id="other-branch-container" style="grid-column: 1 / -1; display: none;">
+                        <label style="display: block; margin-bottom: 5px; font-weight: 600;">Please Specify Branch *</label>
+                        <input type="text" id="student-branch-other" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
+                    </div>
+                </div>
+                
+                <div style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px;">
+                    <button type="button" class="btn btn-outline" onclick="cancelStudentDetails()">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Continue</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Result View (for exams with result type) -->
+    <div id="result-view" class="container hidden">
+        <div class="dashboard-header">
+            <h2 style="color:var(--dark)">Exam Result</h2>
+            <button class="btn btn-outline" onclick="location.reload()">Back to Dashboard</button>
+        </div>
+        
+        <div class="dash-card" style="max-width: 600px; margin: 40px auto; text-align: center;">
+            <div id="result-status" style="font-size: 4rem; margin-bottom: 20px;"></div>
+            <h2 id="result-title" style="margin-bottom: 10px;"></h2>
+            <p id="result-message" style="color: var(--gray); font-size: 1.1rem; margin-bottom: 30px;"></p>
+            <div id="result-details" style="background: #f8f9fa; padding: 20px; border-radius: 8px; text-align: left;"></div>
+        </div>
+    </div>
+
+    <!-- Exam Introduction View -->
+    <div id="introduction-view" class="container hidden">
+        <div class="dashboard-header">
+            <h2 style="color:var(--primary)" id="intro-title">Exam Instructions</h2>
+            <button class="btn btn-outline" onclick="cancelIntroduction()">
+                <i class="fa fa-times"></i> Cancel
+            </button>
+        </div>
+        
+        <div class="dash-card" style="max-width: 900px; margin: 20px auto;">
+            <div id="intro-content" style="line-height: 1.8; font-size: 1rem;"></div>
+            
+            <div style="margin-top: 30px; padding-top: 20px; border-top: 2px solid var(--border);">
+                <div style="text-align: center; margin-bottom: 20px;">
+                    <div style="font-size: 0.9rem; color: var(--gray); margin-bottom: 5px;">Time remaining to read instructions:</div>
+                    <div id="intro-timer" style="font-size: 1.5rem; font-weight: bold; color: var(--primary);">2:00</div>
+                </div>
+                <div style="display: flex; gap: 10px; justify-content: center;">
+                    <button class="btn btn-outline" onclick="cancelIntroduction()">Cancel</button>
+                    <button class="btn btn-success" id="start-exam-btn" onclick="proceedToMainInstructions()" style="font-size: 1.1rem; padding: 12px 40px;">
+                        <i class="fa fa-arrow-right"></i> Continue to Instructions
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Instructions View (Exam Interface Guide) -->
+    <div id="main-instructions-view" class="container hidden">
+        <div class="dashboard-header">
+            <h2 style="color:var(--primary)">How to Use the Exam Interface</h2>
+            <button class="btn btn-outline" onclick="cancelMainInstructions()">
+                <i class="fa fa-times"></i> Cancel
+            </button>
+        </div>
+        
+        <div class="dash-card" style="max-width: 1000px; margin: 20px auto;">
+            <div style="line-height: 1.8; font-size: 1rem;">
+                <h3 style="color: var(--primary); margin-bottom: 15px;">📋 Exam Interface Overview</h3>
+                <p style="margin-bottom: 20px;">This guide will help you understand all the features available during your exam. Please read carefully.</p>
+                
+                <hr style="margin: 25px 0; border: 1px solid #e0e0e0;">
+                
+                <h4 style="color: var(--dark); margin-bottom: 10px;">🎯 Question Palette (Right Sidebar)</h4>
+                <p style="margin-bottom: 15px;">The question palette on the right side shows all questions with color-coded status:</p>
+                <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
+                    <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px;">
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <div style="width: 35px; height: 35px; background: var(--success); border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold;">1</div>
+                            <div><strong>Green</strong> - Answered</div>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <div style="width: 35px; height: 35px; background: var(--danger); border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold;">2</div>
+                            <div><strong>Red</strong> - Not Answered (Visited but Skipped)</div>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <div style="width: 35px; height: 35px; background: var(--purple); border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold;">3</div>
+                            <div><strong>Purple</strong> - Marked for Review</div>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <div style="width: 35px; height: 35px; background: #ccc; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold;">4</div>
+                            <div><strong>Gray</strong> - Not Visited Yet</div>
+                        </div>
+                    </div>
+                    <p style="margin-top: 15px; color: var(--gray); font-size: 0.9rem;"><strong>Tip:</strong> Click on any question number in the palette to jump directly to that question.</p>
+                </div>
+                
+                <hr style="margin: 25px 0; border: 1px solid #e0e0e0;">
+                
+                <h4 style="color: var(--dark); margin-bottom: 10px;">🔘 Action Buttons</h4>
+                <p style="margin-bottom: 15px;">Below each question, you'll find these buttons:</p>
+                <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
+                    <div style="display: flex; flex-direction: column; gap: 12px;">
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <button class="btn btn-outline" style="pointer-events: none; min-width: 120px;">Save & Next</button>
+                            <span>Saves your answer and moves to the next question</span>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <button class="btn btn-outline" style="pointer-events: none; border-color: var(--warning); min-width: 120px;">Mark Review</button>
+                            <span>Marks question for review (with or without answer) - you can revisit it later</span>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <button class="btn btn-outline" style="pointer-events: none; min-width: 120px;">Clear</button>
+                            <span>Clears your selected answer for the current question</span>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <button class="btn btn-primary" style="pointer-events: none; min-width: 120px;">Next ></button>
+                            <span>Moves to the next question without saving (useful for skipping)</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <hr style="margin: 25px 0; border: 1px solid #e0e0e0;">
+                
+                <h4 style="color: var(--dark); margin-bottom: 10px;">⏱️ Timer & Submit</h4>
+                <div style="background: #fff3cd; padding: 15px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #ffc107;">
+                    <p style="margin-bottom: 10px;"><strong>Timer:</strong> The timer at the top right shows remaining time. The exam will auto-submit when time expires.</p>
+                    <p style="margin-bottom: 0;"><strong>Submit Button:</strong> Click the green "Submit" button at the top right when you're done. You'll be asked to confirm before final submission.</p>
+                </div>
+                
+                <hr style="margin: 25px 0; border: 1px solid #e0e0e0;">
+                
+                <h4 style="color: var(--dark); margin-bottom: 10px;">📱 Sidebar Toggle</h4>
+                <p style="margin-bottom: 15px;">Click the menu icon (☰) at the top left to collapse/expand the question palette for more screen space.</p>
+                
+                <hr style="margin: 25px 0; border: 1px solid #e0e0e0;">
+                
+                <h4 style="color: var(--dark); margin-bottom: 10px;">⚠️ Important Reminders</h4>
+                <div style="background: #f8d7da; padding: 15px; border-radius: 8px; border-left: 4px solid #dc3545;">
+                    <ul style="margin: 0; padding-left: 20px;">
+                        <li style="margin-bottom: 8px;"><strong>DO NOT refresh</strong> or close the browser tab during the exam</li>
+                        <li style="margin-bottom: 8px;"><strong>DO NOT switch tabs</strong> excessively - it may lead to auto-submission</li>
+                        <li style="margin-bottom: 8px;"><strong>Ensure stable internet connection</strong> throughout the exam</li>
+                        <li style="margin-bottom: 8px;"><strong>Answer submission is final</strong> - you can change answers after clicking "Save & Next" also</li>
+                        <li style="margin-bottom: 0;"><strong>Review marked questions</strong> before final submission if time permits</li>
+                    </ul>
+                </div>
+                
+                <div style="background: #d1ecf1; padding: 15px; border-radius: 8px; border-left: 4px solid #0c5460; margin-top: 20px;">
+                    <p style="margin: 0;"><strong>💡 Pro Tip:</strong> Use the "Mark Review" button for questions you're unsure about, then use the question palette to quickly navigate back to them before submitting.</p>
+                </div>
+            </div>
+            
+            <div style="margin-top: 30px; padding-top: 20px; border-top: 2px solid var(--border);">
+                <div style="text-align: center; margin-bottom: 20px;">
+                    <div style="font-size: 0.9rem; color: var(--gray); margin-bottom: 5px;">Time remaining to read these instructions:</div>
+                    <div id="main-instructions-timer" style="font-size: 1.5rem; font-weight: bold; color: var(--primary);">5:00</div>
+                    <p style="color: var(--gray); font-size: 0.85rem; margin-top: 10px;">The exam will start automatically when the timer reaches 00:00</p>
+                </div>
+                <div style="display: flex; gap: 10px; justify-content: center;">
+                    <button class="btn btn-outline" onclick="cancelMainInstructions()">Cancel</button>
+                    <button class="btn btn-success" id="start-exam-now-btn" onclick="confirmAndStartExam()" style="font-size: 1.1rem; padding: 12px 40px;">
+                        <i class="fa fa-check"></i> I'm Ready - Start Exam Now
+                    </button>
+                </div>
+            </div>
         </div>
     </div>
 
