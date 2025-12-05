@@ -938,7 +938,8 @@ window.submitExam = async () => {
     let score = 0;
     let details = [];
 
-    currentExam.questions.forEach((q, i) => {
+    // Use flatQuestions which works for both sectioned and flat formats
+    flatQuestions.forEach((q, i) => {
         let uAns = userAnswers[i];
         // For multi correct, ensure empty array is saved as null
         if (q.type === 'multi' && (!uAns || uAns.length === 0)) uAns = null;
@@ -950,38 +951,39 @@ window.submitExam = async () => {
         let marks = 0;
         let isCorrect = false;
 
-        // Scoring logic with JEE Advanced style partial marking for multi-correct
+        // Scoring logic with relative grading support
         if (uAns !== null) {
-            if (q.type === 'multi' && Array.isArray(uAns) && Array.isArray(q.answer)) {
-                // Check if all selected answers are correct (no wrong option selected)
+            // Check if question has relative grading
+            if (q.relativeGrading && typeof q.relativeGrading === 'object') {
+                // Relative grading: marks based on option selected
+                const userAnsKey = String(uAns);
+                marks = parseFloat(q.relativeGrading[userAnsKey] || 0);
+                // For relative grading, consider it correct if marks > 0
+                isCorrect = marks > 0;
+            } else if (q.type === 'multi' && Array.isArray(uAns) && Array.isArray(q.answer)) {
+                // Multi-correct with JEE Advanced style partial marking
                 const allCorrect = uAns.every(v => q.answer.includes(v));
                 const allAnswersSelected = uAns.length === q.answer.length && allCorrect;
                 
                 if (allAnswersSelected) {
-                    // Full marks if all correct answers selected
-                    marks = parseInt(q.marks || 4);
+                    marks = parseFloat(q.marks || 4);
                     isCorrect = true;
                 } else if (allCorrect && uAns.length > 0) {
-                    // Partial marks: only correct options selected, but not all
-                    // JEE Advanced style: proportional marks based on correct selections
                     const correctCount = uAns.length;
                     const totalCorrect = q.answer.length;
-                    marks = parseInt(q.marks || 4) * (correctCount / totalCorrect);
-                    isCorrect = false; // Partial credit, not fully correct
+                    marks = parseFloat(q.marks || 4) * (correctCount / totalCorrect);
+                    isCorrect = false;
                 } else {
-                    // Wrong answer: at least one wrong option selected or all wrong
-                    marks = -parseInt(q.negativeMarks || 1);
+                    marks = -parseFloat(q.negativeMarks || 0);
                     isCorrect = false;
                 }
             } else if (q.type === 'passage' && Array.isArray(q.questions)) {
-                // For passage, you may want to store sub-question results
-                // Here, just mark as attempted
-                marks = 0; // You can sum sub-question marks if needed
+                marks = 0;
             } else if (uAns == (q.answer ?? q.correct)) {
-                marks = parseInt(q.marks || 4);
+                marks = parseFloat(q.marks || 4);
                 isCorrect = true;
             } else {
-                marks = -parseInt(q.negativeMarks || 1);
+                marks = -parseFloat(q.negativeMarks || 0);
             }
         }
         score += marks;
